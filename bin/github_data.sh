@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # commit to csv_data
 
-URL=https://github.com/baobinhday/vietlott-data.git
-FOLDER=vietlott-data
+URL=https://github.com/baobinhday/vietlott-data-1.git
+FOLDER=vietlott-data-1
 DATA_FOLDER=data
 USER="Hieu Hoang"
 EMAIl="baobinhday@gmail.com"
@@ -46,11 +46,11 @@ python src/render_readme.py
 #git pull
 
 # commit and push
-git remote add github git@github.com:vietvudanh/vietlott-data.git
+git remote add github git@github.com:baobinhday/vietlott-data-1.git
 git config user.name "\'$USER\'"
 git config user.email "\'$EMAIl\'"
 git status
 git add $DATA_FOLDER
 git add readme.md
 git commit -m "update data @ `date +%Y-%m-%d\ %H:%M:%S`"
-git push github main
+git push github my-dev

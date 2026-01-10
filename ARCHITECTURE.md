@@ -2,7 +2,7 @@
 
 The project is quite simple with all sources are in `/src`
 
-You can start with `/src/cli` to check what are available and start there
+You can start with `/src/vietlott/cli` to check what are available and start there
 
 ## product config
 
