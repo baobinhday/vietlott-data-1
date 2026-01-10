@@ -45,8 +45,15 @@ def detect_missing_data(ctx, product, limit):
     df_missing_process = df_missing.reverse().slice(1, limit)
 
     # Convert to pandas for markdown display (tabulate doesn't support polars well yet)
-    df_display = df_missing_process.select(["date", "id", "id_next", "diff", "index", "index_next"]).to_pandas()
-    logger.info("\n" + df_display.to_markdown())
+    df_display = df_missing_process.select(["date", "id", "id_next", "diff", "index", "index_next"])
+    from tabulate import tabulate
+
+    logger.info(
+        "\n"
+        + tabulate(
+            df_display.rows(), headers=["date", "id", "id_next", "diff", "index", "index_next"], tablefmt="github"
+        )
+    )
 
     run_date = pendulum.now(tz="Asia/Ho_Chi_Minh").to_date_string()
     product_obj: BaseProduct = map_class_name[product]()
