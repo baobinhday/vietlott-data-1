@@ -3,6 +3,8 @@
 
 VENV=".venv"
 
+make requirements-dev
+
 # Activate virtual environment if it exists
 if [ -n "$VENV" ]; then
   source "$VENV/bin/activate"
