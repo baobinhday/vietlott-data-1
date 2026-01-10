@@ -228,7 +228,7 @@ vietlott-missing [OPTIONS] PRODUCT
 
 ```bash
 # Clone the repository
-git clone https://github.com/vietvudanh/vietlott-data.git ; cd vietlott-data
+git clone https://github.com/baobinhday/vietlott-data-1.git ; cd vietlott-data-1 ; git checkout my-dev
 
 # Install dependencies (recommend using uv and virtual environment)
 uv sync --dev
