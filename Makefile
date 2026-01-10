@@ -14,9 +14,9 @@ all: lint test
 
 requirements-dev: .venv
 	@echo "Generating & installing dev requirements..."
-	$(UV) run pip compile --extra dev pyproject.toml > requirements-dev.txt
-	$(UV) run pip install -r requirements-dev.txt
-	$(UV) run pip install -e .
+	$(UV) pip compile --extra dev pyproject.toml > requirements-dev.txt
+	$(UV) pip install -r requirements-dev.txt
+	$(UV) pip install -e .
 
 test:
 	$(UV) run pytest src/vietlott/tests
