@@ -75,27 +75,30 @@ class LongAbsenceStrategy(PredictModel):
         self._absence_cache[target_date] = result
         return result
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """
         Predict numbers by selecting from those absent the longest.
 
         Args:
             target_date: Date for prediction.
+            candidate_pool: Optional constrained set of numbers to pick from.
 
         Returns:
             Sorted list of predicted numbers.
         """
         sorted_by_absence = self._days_since_last_appearance(target_date)
-        candidate_pool = sorted_by_absence[: self.top_n]
 
-        # Sample number_predict numbers from the candidate pool
+        if candidate_pool is not None:
+            pool_set = set(candidate_pool)
+            candidate_pool = [n for n in sorted_by_absence if n in pool_set]
+        else:
+            candidate_pool = sorted_by_absence[: self.top_n]
+
         pick_count = min(self.number_predict, len(candidate_pool))
         predicted = random.sample(candidate_pool, pick_count)
 
-        # If the pool is smaller than required (shouldn't happen in practice),
-        # fill the remainder from the remaining numbers
         if pick_count < self.number_predict:
-            remaining = [n for n in sorted_by_absence[self.top_n :] if n not in predicted]
+            remaining = [n for n in sorted_by_absence if n not in predicted]
             extra_needed = self.number_predict - pick_count
             predicted.extend(random.sample(remaining, min(extra_needed, len(remaining))))
 
