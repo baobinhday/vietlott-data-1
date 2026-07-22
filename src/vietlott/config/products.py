@@ -17,6 +17,12 @@ class ProductConfig:
     max_value: int
     size_output: int
     interval: timedelta
+    has_special: bool = False
+    special_position: int = 0
+    special_pick_required: bool = False
+    special_min: int = 0
+    special_max: int = 0
+    special_count: int = 1
     num_thread: int = 10
     use_cookies: bool = True
     default_index_to: int = 1
@@ -30,6 +36,11 @@ power655_config = ProductConfig(
     max_value=55,
     size_output=6,
     interval=timedelta(days=2),
+    has_special=True,
+    special_position=6,
+    special_pick_required=False,
+    special_min=1,
+    special_max=55,
     use_cookies=False,
 )
 power645_config = ProductConfig(
@@ -48,6 +59,12 @@ power535_config = ProductConfig(
     max_value=35,
     size_output=5,
     interval=timedelta(days=2),
+    has_special=True,
+    special_position=5,
+    special_pick_required=True,
+    special_min=1,
+    special_max=12,
+    special_count=12,
     use_cookies=False,
 )
 keno_config = ProductConfig(

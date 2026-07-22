@@ -18,14 +18,17 @@ from machine_learning.strategies import (
     ColdNumbersStrategy,
     ExponentialDecayStrategy,
     HotNumbersStrategy,
+    HybridStrategy,
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
     PairFrequencyStrategy,
     PatternStrategy,
     RandomModel,
+    SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
+from vietlott.config.products import get_config
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -35,15 +38,40 @@ MIN_VAL = 1
 MAX_VAL = 55
 N_DRAWS = 40
 
+_config_655 = None  # lazy-loaded
+_config_535 = None
+_config_645 = None
 
-def _make_df(n: int = N_DRAWS, seed: int = 42) -> pd.DataFrame:
+
+def _get_config_655():
+    global _config_655
+    if _config_655 is None:
+        _config_655 = get_config("power_655")
+    return _config_655
+
+
+def _get_config_535():
+    global _config_535
+    if _config_535 is None:
+        _config_535 = get_config("power_535")
+    return _config_535
+
+
+def _get_config_645():
+    global _config_645
+    if _config_645 is None:
+        _config_645 = get_config("power_645")
+    return _config_645
+
+
+def _make_df(n: int = N_DRAWS, seed: int = 42, ncols: int = 6) -> pd.DataFrame:
     """Create a synthetic lottery DataFrame with `n` draws."""
     rng = random.Random(seed)
     start = date(2023, 1, 1)
     rows = []
     for i in range(n):
         draw_date = start + timedelta(days=i * 3)
-        result = sorted(rng.sample(range(MIN_VAL, MAX_VAL + 1), 6))
+        result = sorted(rng.sample(range(MIN_VAL, MAX_VAL + 1), ncols))
         rows.append({"date": draw_date, "result": result, "id": i + 1})
     return pd.DataFrame(rows)
 
@@ -188,15 +216,24 @@ class TestMarkovChainStrategy:
 # ---------------------------------------------------------------------------
 
 STRATEGY_FACTORIES = [
-    lambda df: RandomModel(df, time_predict=1),
-    lambda df: LongAbsenceStrategy(df, time_predict=1, top_n=10),
-    lambda df: PatternStrategy(df, time_predict=1, lookback_days=90, pattern_weight=0.6),
-    lambda df: HotNumbersStrategy(df, time_predict=1, lookback_days=90),
-    lambda df: ColdNumbersStrategy(df, time_predict=1, lookback_days=90),
-    lambda df: NotRepeatStrategy(df, time_predict=1, lookback_days=14),
-    lambda df: ExponentialDecayStrategy(df, time_predict=1, half_life_days=30),
-    lambda df: PairFrequencyStrategy(df, time_predict=1, lookback_days=90),
-    lambda df: MarkovChainStrategy(df, time_predict=1, lookback_days=90),
+    lambda df: RandomModel(df, time_predict=1).apply_product_config(_get_config_655()),
+    lambda df: LongAbsenceStrategy(df, time_predict=1, top_n=10).apply_product_config(_get_config_655()),
+    lambda df: PatternStrategy(df, time_predict=1, lookback_days=90, pattern_weight=0.6).apply_product_config(
+        _get_config_655()
+    ),
+    lambda df: HotNumbersStrategy(df, time_predict=1, lookback_days=90).apply_product_config(_get_config_655()),
+    lambda df: ColdNumbersStrategy(df, time_predict=1, lookback_days=90).apply_product_config(_get_config_655()),
+    lambda df: NotRepeatStrategy(df, time_predict=1, lookback_days=14).apply_product_config(_get_config_655()),
+    lambda df: ExponentialDecayStrategy(df, time_predict=1, half_life_days=30).apply_product_config(_get_config_655()),
+    lambda df: PairFrequencyStrategy(df, time_predict=1, lookback_days=90).apply_product_config(_get_config_655()),
+    lambda df: MarkovChainStrategy(df, time_predict=1, lookback_days=90).apply_product_config(_get_config_655()),
+    lambda df: SteinerStrategy(df, time_predict=1, lookback_days=90).apply_product_config(_get_config_655()),
+    lambda df: HybridStrategy(
+        base=PairFrequencyStrategy(df, time_predict=1, lookback_days=180).apply_product_config(_get_config_655()),
+        steiner=SteinerStrategy(df, time_predict=1, lookback_days=180).apply_product_config(_get_config_655()),
+        top_k=5,
+        time_predict=1,
+    ).apply_product_config(_get_config_655()),
 ]
 
 STRATEGY_NAMES = [
@@ -209,6 +246,8 @@ STRATEGY_NAMES = [
     "ExponentialDecayStrategy",
     "PairFrequencyStrategy",
     "MarkovChainStrategy",
+    "SteinerStrategy",
+    "HybridStrategy",
 ]
 
 
@@ -260,3 +299,65 @@ class TestBacktestDateFilter:
         model.backtest(date_to=cutoff)
         assert len(model.df_backtest) < len(df)
         assert all(d <= cutoff for d in model.df_backtest["date"])
+
+
+# ---------------------------------------------------------------------------
+# Special-number (số đặc biệt) tests
+# ---------------------------------------------------------------------------
+
+
+def test_5_35_wheeling_12_tickets(df):
+    """5/35: predict() with special_pick_required=True generates 12 tickets per call."""
+    config = _get_config_535()
+    model = RandomModel(df, time_predict=1).apply_product_config(config)
+    model.prize_fn = lambda m, s: 0
+    model.backtest()
+    model.evaluate()
+    # 40 draws * 1 call * 12 specials = 480 predictions
+    assert len(model.df_backtest_evaluate) == 40 * 1 * 12
+
+
+def test_6_55_overlap_special_match():
+    """6/55: special_match = 1 when any of 6 main picks equals result[6]."""
+    predicted = [1, 2, 3, 4, 5, 6]
+    result = [1, 2, 3, 4, 5, 7, 6]  # last (6) is cầu vàng, matches predicted
+    main_match, special_match = PredictModel._compare_list(
+        predicted,
+        None,
+        result,
+        has_special=True,
+        special_position=6,
+        special_pick_required=False,
+        main_count=6,
+    )
+    assert main_match == 5  # first 5 match (6 is not in result[0:6])
+    assert special_match == 1  # predicted has 6, result[6] is 6
+
+
+def test_5_35_explicit_special():
+    """5/35: special_match = 1 when predicted_special == result[5]."""
+    predicted_main = [1, 2, 3, 4, 5]
+    predicted_special = 7
+    result = [1, 2, 3, 4, 5, 7]  # last is special=7
+    main_match, special_match = PredictModel._compare_list(
+        predicted_main,
+        predicted_special,
+        result,
+        has_special=True,
+        special_position=5,
+        special_pick_required=True,
+        main_count=5,
+    )
+    assert main_match == 5
+    assert special_match == 1
+
+
+def test_6_45_no_special(df):
+    """6/45: no special, predict() creates 1 ticket per call."""
+    config = _get_config_645()
+    model = RandomModel(df, time_predict=1).apply_product_config(config)
+    model.prize_fn = lambda m, s: 0
+    model.backtest()
+    model.evaluate()
+    # 40 draws * 1 call * 1 (no special) = 40 predictions
+    assert len(model.df_backtest_evaluate) == 40 * 1

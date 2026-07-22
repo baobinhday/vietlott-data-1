@@ -11,6 +11,8 @@ the :meth:`predict` method.  The base class provides:
 * :meth:`revenue` that estimates profit/loss given the prize structure.
 """
 
+from typing import List
+
 import pandas as pd
 
 
@@ -41,7 +43,20 @@ class PredictModel:
     number_predict = 6
     ticket_price = 10000
 
-    prices = {6: 40_000_000_000, 5: 5_000_000_000, 4: 500000, 3: 50000}
+    prices = {6: 30_000_000_000, 5: 40_000_000, 4: 500_000, 3: 50_000}
+
+    # Canonical main-number field names (aliased from the legacy names above)
+    main_count: int = 6
+    main_min: int = 1
+    main_max: int = 55
+
+    # Special-number (số đặc biệt) fields
+    has_special: bool = False
+    special_position: int = 0
+    special_pick_required: bool = False
+    special_min: int = 0
+    special_max: int = 0
+    special_count: int = 1
 
     col_date = "date"
     col_result = "result"
@@ -50,6 +65,11 @@ class PredictModel:
     col_predict_metadata = "predict_metadata"
     col_correct = "is_correct"
     col_correct_num = "correct_num"
+    col_predict_idx = "predict_idx"
+    col_special_idx = "special_idx"
+    col_predict_special = "predicted_special"
+    col_main_match = "main_match"
+    col_special_match = "special_match"
 
     def __init__(
         self,
@@ -81,6 +101,7 @@ class PredictModel:
         self.time_predict = time_predict
         self.min_val = min_val
         self.max_val = max_val
+        self.prize_fn = None  # set by render files per product
 
     # ------------------------------------------------------------------
     # Helpers
@@ -92,26 +113,118 @@ class PredictModel:
         return number_series.explode().value_counts().to_frame("times")
 
     @classmethod
-    def _compare_list(cls, l1, l2):
+    def _compare_list(
+        cls,
+        predicted_main,
+        predicted_special,
+        result,
+        has_special=False,
+        special_position=0,
+        special_pick_required=False,
+        main_count=6,
+    ):
         """
-        Compare two number lists.
+        Compare predicted main + special numbers against the actual draw result.
+
+        Parameters
+        ----------
+        predicted_main:
+            List of main-number predictions (length ``main_count``).
+        predicted_special:
+            The special-number prediction (scalar) or ``None`` when not
+            explicitly picked.
+        result:
+            The actual draw result list.
+        has_special:
+            Whether this product has a special number.
+        special_position:
+            0-based index of the special number in ``result``.
+        special_pick_required:
+            Whether the player explicitly picks a special number.
+        main_count:
+            How many main numbers are in a ticket.
 
         Returns
         -------
-        (is_full_match, intersection_size)
-            ``is_full_match`` is ``True`` only when every element of ``l1``
-            appears in ``l2``.
+        (main_match, special_match)
+            ``main_match`` — count of predicted_main that appear in
+            ``result[:special_position]`` (or full result when no special).
+            ``special_match`` — 1 if special matched, else 0.
         """
-        l1_s = set(l1)
-        l2_s = set(l2)
-        inter = l1_s.intersection(l2_s)
-        return len(inter) == len(l1), len(inter)
+        # If the result list does not have a special position (e.g. legacy data
+        # with only 6 numbers for 6/55), treat it as no special regardless of
+        # the has_special flag.
+        effective_has_special = has_special and special_position < len(result)
+
+        if effective_has_special:
+            main_result = set(result[:special_position])
+            special_result = result[special_position]
+        else:
+            main_result = set(result)
+            special_result = None
+
+        main_match = len(set(predicted_main) & main_result)
+
+        if effective_has_special:
+            if special_pick_required:
+                # e.g. 5/35: player picks special explicitly
+                special_match = 1 if (predicted_special is not None and predicted_special == special_result) else 0
+            else:
+                # e.g. 6/55: any predicted main == result[special_position]
+                special_match = 1 if special_result in predicted_main else 0
+        else:
+            special_match = 0
+
+        return main_match, special_match
 
     # ------------------------------------------------------------------
     # Core interface
     # ------------------------------------------------------------------
 
-    def predict(self, date):
+    def apply_product_config(self, config):
+        """Configure this model for a specific Vietlott product.
+
+        Returns self for chaining.
+        """
+        self.main_min = config.min_value
+        self.main_max = config.max_value
+        self.main_count = config.size_output
+        # Mirror to legacy names for backward compat
+        self.min_val = config.min_value
+        self.max_val = config.max_value
+        self.number_predict = config.size_output
+        # Special config
+        self.has_special = getattr(config, "has_special", False)
+        self.special_position = getattr(config, "special_position", 0)
+        self.special_pick_required = getattr(config, "special_pick_required", False)
+        self.special_min = getattr(config, "special_min", 0)
+        self.special_max = getattr(config, "special_max", 0)
+        self.special_count = getattr(config, "special_count", 1)
+        return self
+
+    def predict_special(self, date, candidate_pool=None):
+        """Return list of special-number predictions (length = special_count).
+
+        Default behaviour
+        -----------------
+        - If ``special_pick_required`` is False: return [] (no separate
+          special pick, e.g. 6/55 overlap, 6/45 no-special).
+        - Otherwise: return all specials in range (wheeling, e.g. 5/35
+          returns ``[1, 2, …, 12]``).
+
+        Strategies may override for smarter special-number prediction.
+        """
+        if not self.special_pick_required:
+            return []
+        return list(range(self.special_min, self.special_max + 1))
+
+    def _prize_for(self, main_match, special_match):
+        """Compute prize for (main_match, special_match)."""
+        if self.prize_fn is not None:
+            return self.prize_fn(main_match, special_match)
+        return self.prices.get(main_match, 0)
+
+    def predict(self, date, candidate_pool=None) -> List[int]:
         """
         Predict lottery numbers for the given draw date.
 
@@ -123,6 +236,11 @@ class PredictModel:
             The draw date for which predictions should be generated.
             Only data strictly *before* this date should be used to avoid
             look-ahead bias.
+        candidate_pool:
+            Optional constrained set of numbers to pick from.  When
+            provided, the strategy MUST restrict its selection to numbers
+            in this pool.  When ``None``, the strategy picks from the
+            full ``[min_val, max_val]`` range as usual.
 
         Returns
         -------
@@ -136,9 +254,10 @@ class PredictModel:
         """
         Run the strategy over rows in ``self.df``.
 
-        For each row the strategy generates ``time_predict`` tickets.  Each
-        ticket is compared against the actual draw result and the outcome is
-        stored as a list of dicts under the ``predict_metadata`` column.
+        For each row the strategy generates ``time_predict`` main-number
+        predictions and (for products with ``special_pick_required``) wheels
+        through all specials.  Each combination is stored as a separate row
+        in ``predict_metadata``.
 
         Results are saved to ``self.df_backtest``.
 
@@ -162,16 +281,35 @@ class PredictModel:
         def fn_apply(row):
             predicted = []
             for i in range(self.time_predict):
-                loop_predict = self.predict(row.date)
-                correct, correct_num = self._compare_list(row.result, loop_predict)
-                predicted.append(
-                    {
-                        PredictModel.col_predict + "_idx": i,
-                        PredictModel.col_predict: loop_predict,
-                        PredictModel.col_correct: correct,
-                        PredictModel.col_correct_num: correct_num,
-                    }
-                )
+                main_pred = self.predict(row.date)
+                specials = self.predict_special(row.date)
+
+                if not specials:
+                    specials = [None]  # one entry per main prediction
+
+                for special_idx, special in enumerate(specials):
+                    main_match, special_match = self._compare_list(
+                        main_pred,
+                        special,
+                        row.result,
+                        has_special=self.has_special,
+                        special_position=self.special_position,
+                        special_pick_required=self.special_pick_required,
+                        main_count=self.main_count,
+                    )
+                    is_correct = main_match == self.main_count
+                    predicted.append(
+                        {
+                            PredictModel.col_predict_idx: i,
+                            PredictModel.col_special_idx: special_idx,
+                            PredictModel.col_predict: main_pred,
+                            PredictModel.col_predict_special: special,
+                            PredictModel.col_main_match: main_match,
+                            PredictModel.col_special_match: special_match,
+                            PredictModel.col_correct: is_correct,
+                            PredictModel.col_correct_num: main_match,  # backward compat alias
+                        }
+                    )
 
             return predicted
 
@@ -186,7 +324,7 @@ class PredictModel:
         ``self.df_backtest_evaluate``, then returns a summary dict with:
 
         * ``correct_time`` – total number of fully-correct tickets.
-        * ``count_correct_num`` – frequency distribution of match counts.
+        * ``count_correct_num`` – frequency distribution of main-match counts.
         """
         self.df_backtest_explode = self.df_backtest.explode(PredictModel.col_predict_metadata)
         self.df_backtest_evaluate = pd.concat(
@@ -199,7 +337,7 @@ class PredictModel:
 
         return {
             "correct_time": self.df_backtest_evaluate[PredictModel.col_correct].sum(),
-            "count_correct_num": self.df_backtest_evaluate.value_counts(PredictModel.col_correct_num),
+            "count_correct_num": self.df_backtest_evaluate[PredictModel.col_main_match].value_counts(),
         }
 
     def revenue(self):
@@ -212,6 +350,12 @@ class PredictModel:
             All values in VND.  ``profit = gain - cost``.
         """
         cost = len(self.df_backtest_evaluate) * self.ticket_price
-        gain = self.df_backtest_evaluate[PredictModel.col_correct_num].map(self.prices).fillna(0).astype(int).sum()
+        gain = sum(
+            self._prize_for(int(m), int(s))
+            for m, s in zip(
+                self.df_backtest_evaluate[PredictModel.col_main_match],
+                self.df_backtest_evaluate[PredictModel.col_special_match],
+            )
+        )
 
         return cost, gain, gain - cost

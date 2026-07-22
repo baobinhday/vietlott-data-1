@@ -64,18 +64,21 @@ class NotRepeatStrategy(PredictModel):
         self._recent_cache[target_date] = recent_numbers
         return recent_numbers
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """
         Predict numbers by avoiding recently drawn ones.
 
         Args:
             target_date: Date for prediction
+            candidate_pool: Optional constrained set of numbers to pick from.
 
         Returns:
             List of predicted numbers
         """
         recent_numbers = self._get_recent_numbers(target_date)
-        all_numbers = list(range(self.min_val, self.max_val + 1))
+        all_numbers = (
+            list(candidate_pool) if candidate_pool is not None else list(range(self.min_val, self.max_val + 1))
+        )
 
         # Separate numbers into recent and non-recent
         non_recent = [n for n in all_numbers if n not in recent_numbers]

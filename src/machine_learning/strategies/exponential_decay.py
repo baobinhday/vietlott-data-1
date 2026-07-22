@@ -102,7 +102,7 @@ class ExponentialDecayStrategy(PredictModel):
 
         return scores
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """Predict numbers using exponentially-weighted frequency scores."""
         if target_date not in self._score_cache:
             self._score_cache[target_date] = self._compute_scores(target_date)
@@ -121,6 +121,11 @@ class ExponentialDecayStrategy(PredictModel):
                 w = max(1, round((max_score - s + 0.1) * 10))
             weighted_pool.extend([num] * w)
 
+        # Restrict to candidate_pool when given
+        if candidate_pool is not None:
+            pool_set = set(candidate_pool)
+            weighted_pool = [n for n in weighted_pool if n in pool_set]
+
         freq_count = int(self.number_predict * self.selection_weight)
         random_count = self.number_predict - freq_count
 
@@ -132,7 +137,11 @@ class ExponentialDecayStrategy(PredictModel):
                 predicted.append(chosen)
             pool = [n for n in pool if n != chosen]
 
-        available = [n for n in range(self.min_val, self.max_val + 1) if n not in predicted]
+        available = [
+            n
+            for n in (list(candidate_pool) if candidate_pool is not None else range(self.min_val, self.max_val + 1))
+            if n not in predicted
+        ]
         if len(available) >= random_count:
             predicted.extend(random.sample(available, random_count))
         else:
