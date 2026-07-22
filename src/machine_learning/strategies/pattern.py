@@ -99,8 +99,17 @@ class PatternStrategy(PredictModel):
             "range_counts": {i: range_counts[i] for i in range(5)},
         }
 
-    def _generate_pattern_based_numbers(self, analysis: Dict[str, Any]) -> List[int]:
-        """Generate numbers from pre-computed pattern analysis."""
+    def _generate_pattern_based_numbers(
+        self, analysis: Dict[str, Any], available: List[int] | None = None
+    ) -> List[int]:
+        """Generate numbers from pre-computed pattern analysis.
+
+        When *available* is provided the original range-based / spacing logic
+        is skipped and the method falls back to ``random.sample(available, self.number_predict)``.
+        """
+        if available is not None:
+            return sorted(random.sample(available, min(self.number_predict, len(available))))
+
         range_counts = analysis["range_counts"]
         total_counts = sum(range_counts.values())
         range_probs = [range_counts[i] / total_counts if total_counts > 0 else 0.2 for i in range(5)]
@@ -125,22 +134,30 @@ class PatternStrategy(PredictModel):
             if valid_candidates:
                 predicted.append(random.choice(valid_candidates))
             else:
-                available = [n for n in range(self.min_val, self.max_val + 1) if n not in predicted]
-                if available:
-                    predicted.append(random.choice(available))
+                avail = [n for n in range(self.min_val, self.max_val + 1) if n not in predicted]
+                if avail:
+                    predicted.append(random.choice(avail))
                 else:
                     break
 
         return sorted(predicted)
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """
         Predict numbers based on pattern analysis.
 
         Analysis for ``target_date`` is computed at most once and cached;
         repeated calls with the same date (``time_predict > 1``) skip
         re-computation entirely.
+
+        When *candidate_pool* is provided the pattern analysis is bypassed
+        and numbers are sampled uniformly from the pool.
         """
+        available = list(candidate_pool) if candidate_pool is not None else None
+
+        if available is not None:
+            return sorted(random.sample(available, min(self.number_predict, len(available))))
+
         if target_date not in self._analysis_cache:
             self._analysis_cache[target_date] = self._analyze_patterns(target_date)
         analysis = self._analysis_cache[target_date]
@@ -155,10 +172,10 @@ class PatternStrategy(PredictModel):
             predicted.extend(pattern_numbers[:pattern_count])
 
         if random_count > 0:
-            available = [n for n in range(self.min_val, self.max_val + 1) if n not in predicted]
-            if len(available) >= random_count:
-                predicted.extend(random.sample(available, random_count))
+            avail = [n for n in range(self.min_val, self.max_val + 1) if n not in predicted]
+            if len(avail) >= random_count:
+                predicted.extend(random.sample(avail, random_count))
             else:
-                predicted.extend(available)
+                predicted.extend(avail)
 
         return sorted(predicted[: self.number_predict])
