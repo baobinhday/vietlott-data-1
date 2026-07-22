@@ -23,12 +23,28 @@ from machine_learning.strategies import (
     PairFrequencyStrategy,
     PatternStrategy,
     RandomModel,
+    SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
 from vietlott.config.products import get_config
 
 # (strategy_name, tickets_per_day, model_instance) after backtest+evaluate
 _StrategyEntry = Tuple[str, int, PredictModel]
+
+
+def _prize_for_6_55(main_match, special_match):
+    """Prize tiers for Power 6/55 (VND)."""
+    if main_match == 6:
+        return 30_000_000_000  # JP1
+    if main_match == 5 and special_match == 1:
+        return 3_000_000_000  # JP2
+    if main_match == 5:
+        return 40_000_000  # Nhất
+    if main_match == 4:
+        return 500_000  # Nhì
+    if main_match == 3:
+        return 50_000  # Ba
+    return 0
 
 
 class PredictionSummaryGenerator:
@@ -91,6 +107,7 @@ class PredictionSummaryGenerator:
         each model has already been backtested and evaluated.
         """
         tpd = 30  # tickets per day for all strategies
+        config = get_config("power_655")
 
         strategy_defs = [
             ("Random Strategy", RandomModel(df_pd, tpd)),
@@ -114,10 +131,16 @@ class PredictionSummaryGenerator:
                 "Markov Chain Strategy",
                 MarkovChainStrategy(df_pd, time_predict=tpd, lookback_days=365, smoothing=0.5),
             ),
+            (
+                "Steiner Strategy",
+                SteinerStrategy(df_pd, time_predict=tpd, lookback_days=365),
+            ),
         ]
 
         results: List[_StrategyEntry] = []
         for name, model in strategy_defs:
+            model.apply_product_config(config)
+            model.prize_fn = _prize_for_6_55
             logger.info(f"Running {name}...")
             model.backtest(date_from=date_from, date_to=date_to)
             model.evaluate()
@@ -185,7 +208,7 @@ class PredictionSummaryGenerator:
         )
 
         mask = (s_correct >= 5).to_numpy()
-        df_best = df_eval.loc[mask, ["date", "result", "predicted", "correct_num"]].copy()
+        df_best = df_eval.loc[mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]].copy()
         df_best["result"] = df_best["result"].apply(
             lambda x: str([int(i) for i in x]) if hasattr(x, "__iter__") else str(x)
         )

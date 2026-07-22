@@ -36,17 +36,28 @@ MarkovChainStrategy
     Builds a transition matrix T[a][b] counting how often number ``a``
     in draw ``t`` was followed by number ``b`` in draw ``t+1``, then
     scores candidates based on the previous draw's composition.
+SteinerStrategy
+    Decomposes the number range into 3-element pair-disjoint triples
+    (a partial Steiner triple system) and selects 6 numbers by finding
+    two disjoint triples whose historical pair co-occurrence is highest.
+HybridStrategy
+    Two-stage strategy: a Steiner proposer generates a top-K candidate
+    number pool, and a voter strategy is invoked with ``candidate_pool``
+    set to that pool.  The voter runs its own original algorithm
+    constrained to the pool, so each hybrid produces a distinct output.
 """
 
 from .base import PredictModel
 from .exponential_decay import ExponentialDecayStrategy
 from .frequency import ColdNumbersStrategy, FrequencyStrategy, HotNumbersStrategy
+from .hybrid import HybridStrategy
 from .long_absence import LongAbsenceStrategy
 from .markov_chain import MarkovChainStrategy
 from .not_repeat import NotRepeatStrategy
 from .pair_frequency import PairFrequencyStrategy
 from .pattern import PatternStrategy
 from .random_strategy import RandomModel
+from .steiner import SteinerStrategy
 
 __all__ = [
     "PredictModel",
@@ -60,4 +71,6 @@ __all__ = [
     "ExponentialDecayStrategy",
     "PairFrequencyStrategy",
     "MarkovChainStrategy",
+    "SteinerStrategy",
+    "HybridStrategy",
 ]

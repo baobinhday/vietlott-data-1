@@ -68,12 +68,15 @@ class FrequencyStrategy(PredictModel):
         self._frequency_cache[target_date] = frequency_counts
         return frequency_counts
 
-    def _create_weighted_selection_pool(self, frequency_data: Dict[int, int]) -> List[int]:
+    def _create_weighted_selection_pool(
+        self, frequency_data: Dict[int, int], candidate_pool: List[int] | None = None
+    ) -> List[int]:
         """
         Create a weighted pool based on frequency data and strategy type.
 
         Args:
             frequency_data: Dictionary of number frequencies
+            candidate_pool: Optional constrained set of numbers to pick from.
 
         Returns:
             List of numbers with appropriate weighting
@@ -88,6 +91,11 @@ class FrequencyStrategy(PredictModel):
             # Mix of hot and cold numbers
             sorted_nums = list(frequency_data.items())
             random.shuffle(sorted_nums)
+
+        # Restrict to candidate_pool when given
+        if candidate_pool is not None:
+            pool_set = set(candidate_pool)
+            sorted_nums = [(n, f) for n, f in sorted_nums if n in pool_set]
 
         # Create weighted pool
         weighted_pool = []
@@ -105,12 +113,13 @@ class FrequencyStrategy(PredictModel):
 
         return weighted_pool
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """
         Predict numbers based on frequency analysis.
 
         Args:
             target_date: Date for prediction
+            candidate_pool: Optional constrained set of numbers to pick from.
 
         Returns:
             List of predicted numbers
@@ -124,18 +133,20 @@ class FrequencyStrategy(PredictModel):
 
         # Select numbers based on frequency
         if frequency_count > 0:
-            weighted_pool = self._create_weighted_selection_pool(frequency_data)
+            weighted_pool = self._create_weighted_selection_pool(frequency_data, candidate_pool)
 
             while len(predicted) < frequency_count and weighted_pool:
                 chosen = random.choice(weighted_pool)
                 if chosen not in predicted:
                     predicted.append(chosen)
-                # Remove all instances of chosen number to avoid duplicates
+                # Remove all instances of chosen number to avoid conflicts
                 weighted_pool = [n for n in weighted_pool if n != chosen]
 
         # Fill remaining slots with random selection
         if random_count > 0:
-            all_numbers = list(range(self.min_val, self.max_val + 1))
+            all_numbers = (
+                list(candidate_pool) if candidate_pool is not None else list(range(self.min_val, self.max_val + 1))
+            )
             available = [n for n in all_numbers if n not in predicted]
 
             if len(available) >= random_count:
