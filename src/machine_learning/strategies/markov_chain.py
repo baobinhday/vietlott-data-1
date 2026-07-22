@@ -157,7 +157,7 @@ class MarkovChainStrategy(PredictModel):
     # Prediction
     # ------------------------------------------------------------------
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """
         Predict numbers using Markov chain transition probabilities.
 
@@ -166,6 +166,8 @@ class MarkovChainStrategy(PredictModel):
         target_date:
             Date for which to generate a prediction.  Only draws strictly
             *before* this date are used (no look-ahead bias).
+        candidate_pool:
+            Optional constrained set of numbers to pick from.
 
         Returns
         -------
@@ -176,10 +178,14 @@ class MarkovChainStrategy(PredictModel):
             self._cache[target_date] = self._build_transition_matrix(target_date)
 
         prev_draw, matrix = self._cache[target_date]
-        all_numbers = list(range(self.min_val, self.max_val + 1))
+        all_numbers = (
+            list(candidate_pool) if candidate_pool is not None else list(range(self.min_val, self.max_val + 1))
+        )
 
         if prev_draw is None or not matrix:
             # No history: fall back to uniform random.
+            if candidate_pool is not None:
+                return sorted(random.sample(candidate_pool, min(self.number_predict, len(candidate_pool))))
             return sorted(random.sample(all_numbers, self.number_predict))
 
         # Aggregate transition scores for each candidate number.
