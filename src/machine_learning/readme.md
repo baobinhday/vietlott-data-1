@@ -1,6 +1,6 @@
 # Vietlott Power 655 Prediction Summary
 
-> **Generated**: 2026-05-05 15:09:43
+> **Generated**: 2026-07-22 15:14:27
 >
 > This document contains machine learning predictions for Vietnamese lottery data.
 > This is an experimental module for educational purposes only.
@@ -13,15 +13,16 @@
 
 | Rank | Strategy | Total Cost (VND) | Total Gain (VND) | Net Profit (VND) | ROI |
 |------|----------|-----------------|-----------------|-----------------|-----|
-| 1 | Pattern Strategy | 402,000,000 | 15,064,500,000 | 14,662,500,000 | 3647.39% |
-| 2 | Markov Chain Strategy | 402,000,000 | 10,070,050,000 | 9,668,050,000 | 2404.99% |
-| 3 | Not Repeat Strategy | 402,000,000 | 5,073,600,000 | 4,671,600,000 | 1162.09% |
-|    4 | Pair Frequency Strategy | 402,000,000 | 5,071,100,000 | 4,669,100,000 | 1161.47% |
-|    5 | Exponential Decay Strategy | 402,000,000 | 5,067,000,000 | 4,665,000,000 | 1160.45% |
-|    6 | Random Strategy | 402,000,000 | 5,066,650,000 | 4,664,650,000 | 1160.36% |
-|    7 | Long Absence Strategy | 402,000,000 | 72,950,000 | -329,050,000 | -81.85% |
-|    8 | Hot Numbers Strategy | 402,000,000 | 72,150,000 | -329,850,000 | -82.05% |
-|    9 | Cold Numbers Strategy | 402,000,000 | 66,000,000 | -336,000,000 | -83.58% |
+| 🥇 1 | Pair Frequency Strategy | 412,200,000 | 15,074,300,000 | 14,662,100,000 | 3557.04% |
+| 🥈 2 | Pattern Strategy | 412,200,000 | 15,066,350,000 | 14,654,150,000 | 3555.11% |
+| 🥉 3 | Not Repeat Strategy | 412,200,000 | 10,079,950,000 | 9,667,750,000 | 2345.40% |
+|    4 | Random Strategy | 412,200,000 | 10,074,200,000 | 9,662,000,000 | 2344.01% |
+|    5 | Markov Chain Strategy | 412,200,000 | 5,080,050,000 | 4,667,850,000 | 1132.42% |
+|    6 | Cold Numbers Strategy | 412,200,000 | 5,076,350,000 | 4,664,150,000 | 1131.53% |
+|    7 | Hot Numbers Strategy | 412,200,000 | 5,074,650,000 | 4,662,450,000 | 1131.11% |
+|    8 | Exponential Decay Strategy | 412,200,000 | 5,070,350,000 | 4,658,150,000 | 1130.07% |
+|    9 | Steiner Strategy | 412,200,000 | 5,065,500,000 | 4,653,300,000 | 1128.89% |
+|    10 | Long Absence Strategy | 412,200,000 | 81,350,000 | -330,850,000 | -80.26% |
 
 
 ## Strategy Descriptions
@@ -220,30 +221,31 @@ for name, model in strategies.items():
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 5,066,650,000 VND |
-| Net profit/loss | 4,664,650,000 VND |
-| ROI | 1160.36% |
+| Total cost | 412,200,000 VND |
+| Total gain | 10,074,200,000 VND |
+| Net profit/loss | 9,662,000,000 VND |
+| ROI | 2344.01% |
 
 #### Match Distribution
-  - **5 matches**: 1 times
-  - **4 matches**: 53 times
-  - **3 matches**: 803 times
-  - **2 matches**: 5,678 times
-  - **1 matches**: 16,515 times
-  - **0 matches**: 17,150 times
+  - **5 matches**: 2 times
+  - **4 matches**: 65 times
+  - **3 matches**: 834 times
+  - **2 matches**: 5,851 times
+  - **1 matches**: 17,133 times
+  - **0 matches**: 17,335 times
 
 #### Best Results (5+ matches)
-| date                | result                      | predicted               |   correct_num |
-|:--------------------|:----------------------------|:------------------------|--------------:|
-| 2018-10-18 00:00:00 | [1, 11, 22, 34, 42, 47, 30] | [1, 22, 30, 37, 42, 47] |             5 |
+| date                | result                       | predicted               |   correct_num |
+|:--------------------|:-----------------------------|:------------------------|--------------:|
+| 2025-07-08 00:00:00 | [23, 24, 32, 42, 48, 50, 31] | [1, 23, 24, 31, 32, 50] |             5 |
+| 2023-07-27 00:00:00 | [3, 11, 13, 31, 33, 45, 27]  | [3, 14, 27, 31, 33, 45] |             5 |
 
 ### Long Absence Strategy
 
@@ -260,24 +262,24 @@ for name, model in strategies.items():
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 72,950,000 VND |
-| Net profit/loss | -329,050,000 VND |
-| ROI | -81.85% |
+| Total cost | 412,200,000 VND |
+| Total gain | 81,350,000 VND |
+| Net profit/loss | -330,850,000 VND |
+| ROI | -80.26% |
 
 #### Match Distribution
-  - **4 matches**: 59 times
-  - **3 matches**: 869 times
-  - **2 matches**: 5,623 times
-  - **1 matches**: 16,480 times
-  - **0 matches**: 17,169 times
+  - **4 matches**: 71 times
+  - **3 matches**: 917 times
+  - **2 matches**: 5,849 times
+  - **1 matches**: 16,715 times
+  - **0 matches**: 17,668 times
 
 #### Best Results (5+ matches)
 No results with 5+ matches found.
@@ -297,32 +299,32 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 15,064,500,000 VND |
-| Net profit/loss | 14,662,500,000 VND |
-| ROI | 3647.39% |
+| Total cost | 412,200,000 VND |
+| Total gain | 15,066,350,000 VND |
+| Net profit/loss | 14,654,150,000 VND |
+| ROI | 3555.11% |
 
 #### Match Distribution
   - **5 matches**: 3 times
   - **4 matches**: 47 times
-  - **3 matches**: 820 times
-  - **2 matches**: 5,674 times
-  - **1 matches**: 16,624 times
-  - **0 matches**: 17,032 times
+  - **3 matches**: 857 times
+  - **2 matches**: 5,856 times
+  - **1 matches**: 16,921 times
+  - **0 matches**: 17,536 times
 
 #### Best Results (5+ matches)
-| date                | result                      | predicted                |   correct_num |
-|:--------------------|:----------------------------|:-------------------------|--------------:|
-| 2025-07-26 00:00:00 | [5, 26, 28, 29, 33, 54, 34] | [28, 29, 31, 33, 34, 54] |             5 |
-| 2025-05-10 00:00:00 | [7, 16, 19, 28, 34, 51, 15] | [10, 15, 16, 19, 28, 34] |             5 |
-| 2024-08-24 00:00:00 | [2, 17, 20, 21, 22, 23, 38] | [2, 20, 21, 22, 23, 45]  |             5 |
+| date                | result                     | predicted               |   correct_num |
+|:--------------------|:---------------------------|:------------------------|--------------:|
+| 2024-11-05 00:00:00 | [9, 31, 36, 46, 49, 54, 7] | [7, 30, 31, 36, 49, 54] |             5 |
+| 2024-07-11 00:00:00 | [1, 2, 11, 21, 22, 23, 26] | [1, 11, 21, 22, 23, 37] |             5 |
+| 2022-11-24 00:00:00 | [4, 6, 18, 27, 52, 53, 10] | [4, 6, 10, 18, 27, 40]  |             5 |
 
 ### Hot Numbers Strategy
 
@@ -339,27 +341,30 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 72,150,000 VND |
-| Net profit/loss | -329,850,000 VND |
-| ROI | -82.05% |
+| Total cost | 412,200,000 VND |
+| Total gain | 5,074,650,000 VND |
+| Net profit/loss | 4,662,450,000 VND |
+| ROI | 1131.11% |
 
 #### Match Distribution
+  - **5 matches**: 1 times
   - **4 matches**: 62 times
-  - **3 matches**: 823 times
-  - **2 matches**: 5,684 times
-  - **1 matches**: 16,673 times
-  - **0 matches**: 16,958 times
+  - **3 matches**: 873 times
+  - **2 matches**: 5,726 times
+  - **1 matches**: 17,049 times
+  - **0 matches**: 17,509 times
 
 #### Best Results (5+ matches)
-No results with 5+ matches found.
+| date                | result                       | predicted                |   correct_num |
+|:--------------------|:-----------------------------|:-------------------------|--------------:|
+| 2018-12-15 00:00:00 | [14, 17, 49, 52, 53, 55, 12] | [14, 38, 49, 52, 53, 55] |             5 |
 
 ### Cold Numbers Strategy
 
@@ -376,27 +381,30 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 66,000,000 VND |
-| Net profit/loss | -336,000,000 VND |
-| ROI | -83.58% |
+| Total cost | 412,200,000 VND |
+| Total gain | 5,076,350,000 VND |
+| Net profit/loss | 4,664,150,000 VND |
+| ROI | 1131.53% |
 
 #### Match Distribution
-  - **4 matches**: 52 times
-  - **3 matches**: 800 times
-  - **2 matches**: 5,576 times
-  - **1 matches**: 16,744 times
-  - **0 matches**: 17,028 times
+  - **5 matches**: 1 times
+  - **4 matches**: 68 times
+  - **3 matches**: 847 times
+  - **2 matches**: 5,942 times
+  - **1 matches**: 16,975 times
+  - **0 matches**: 17,387 times
 
 #### Best Results (5+ matches)
-No results with 5+ matches found.
+| date                | result                       | predicted                |   correct_num |
+|:--------------------|:-----------------------------|:-------------------------|--------------:|
+| 2022-12-13 00:00:00 | [10, 22, 31, 37, 41, 52, 20] | [10, 20, 31, 38, 41, 52] |             5 |
 
 ### Not Repeat Strategy
 
@@ -413,30 +421,31 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 5,073,600,000 VND |
-| Net profit/loss | 4,671,600,000 VND |
-| ROI | 1162.09% |
+| Total cost | 412,200,000 VND |
+| Total gain | 10,079,950,000 VND |
+| Net profit/loss | 9,667,750,000 VND |
+| ROI | 2345.40% |
 
 #### Match Distribution
-  - **5 matches**: 1 times
-  - **4 matches**: 59 times
-  - **3 matches**: 882 times
-  - **2 matches**: 5,666 times
-  - **1 matches**: 16,518 times
-  - **0 matches**: 17,074 times
+  - **5 matches**: 2 times
+  - **4 matches**: 65 times
+  - **3 matches**: 949 times
+  - **2 matches**: 5,796 times
+  - **1 matches**: 16,877 times
+  - **0 matches**: 17,531 times
 
 #### Best Results (5+ matches)
 | date                | result                      | predicted               |   correct_num |
 |:--------------------|:----------------------------|:------------------------|--------------:|
-| 2021-09-18 00:00:00 | [3, 14, 15, 21, 47, 52, 54] | [3, 15, 21, 29, 52, 54] |             5 |
+| 2023-03-21 00:00:00 | [7, 17, 31, 43, 45, 49, 52] | [7, 17, 37, 45, 49, 52] |             5 |
+| 2021-09-18 00:00:00 | [3, 14, 15, 21, 47, 52, 54] | [3, 15, 21, 49, 52, 54] |             5 |
 
 ### Exponential Decay Strategy
 
@@ -453,30 +462,30 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 5,067,000,000 VND |
-| Net profit/loss | 4,665,000,000 VND |
-| ROI | 1160.45% |
+| Total cost | 412,200,000 VND |
+| Total gain | 5,070,350,000 VND |
+| Net profit/loss | 4,658,150,000 VND |
+| ROI | 1130.07% |
 
 #### Match Distribution
   - **5 matches**: 1 times
-  - **4 matches**: 51 times
-  - **3 matches**: 830 times
-  - **2 matches**: 5,699 times
-  - **1 matches**: 16,545 times
-  - **0 matches**: 17,074 times
+  - **4 matches**: 56 times
+  - **3 matches**: 847 times
+  - **2 matches**: 5,864 times
+  - **1 matches**: 17,119 times
+  - **0 matches**: 17,333 times
 
 #### Best Results (5+ matches)
 | date                | result                       | predicted                |   correct_num |
 |:--------------------|:-----------------------------|:-------------------------|--------------:|
-| 2025-06-14 00:00:00 | [11, 12, 22, 26, 41, 47, 24] | [11, 12, 26, 41, 47, 55] |             5 |
+| 2019-01-05 00:00:00 | [10, 11, 38, 47, 53, 55, 51] | [10, 11, 32, 51, 53, 55] |             5 |
 
 ### Pair Frequency Strategy
 
@@ -493,30 +502,32 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 5,071,100,000 VND |
-| Net profit/loss | 4,669,100,000 VND |
-| ROI | 1161.47% |
+| Total cost | 412,200,000 VND |
+| Total gain | 15,074,300,000 VND |
+| Net profit/loss | 14,662,100,000 VND |
+| ROI | 3557.04% |
 
 #### Match Distribution
-  - **5 matches**: 1 times
-  - **4 matches**: 57 times
-  - **3 matches**: 852 times
-  - **2 matches**: 5,680 times
-  - **1 matches**: 16,617 times
-  - **0 matches**: 16,993 times
+  - **5 matches**: 3 times
+  - **4 matches**: 62 times
+  - **3 matches**: 866 times
+  - **2 matches**: 5,775 times
+  - **1 matches**: 17,031 times
+  - **0 matches**: 17,483 times
 
 #### Best Results (5+ matches)
-| date                | result                      | predicted               |   correct_num |
-|:--------------------|:----------------------------|:------------------------|--------------:|
-| 2018-06-05 00:00:00 | [11, 21, 26, 32, 51, 52, 5] | [5, 11, 21, 26, 52, 55] |             5 |
+| date                | result                       | predicted                |   correct_num |
+|:--------------------|:-----------------------------|:-------------------------|--------------:|
+| 2024-11-09 00:00:00 | [11, 14, 24, 26, 34, 51, 40] | [11, 14, 15, 24, 40, 51] |             5 |
+| 2024-11-02 00:00:00 | [2, 9, 19, 20, 34, 54, 26]   | [2, 14, 19, 26, 34, 54]  |             5 |
+| 2019-02-26 00:00:00 | [8, 9, 16, 34, 42, 43, 45]   | [8, 9, 34, 42, 45, 55]   |             5 |
 
 ### Markov Chain Strategy
 
@@ -533,31 +544,70 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Start date | 2017-08-01 00:00:00 |
-| End date | 2026-05-02 00:00:00 |
-| Total draws | 1,340 |
-| Total predictions | 40,200 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
 
 #### Financial Summary
 | Metric | Value |
 |--------|-------|
-| Total cost | 402,000,000 VND |
-| Total gain | 10,070,050,000 VND |
-| Net profit/loss | 9,668,050,000 VND |
-| ROI | 2404.99% |
+| Total cost | 412,200,000 VND |
+| Total gain | 5,080,050,000 VND |
+| Net profit/loss | 4,667,850,000 VND |
+| ROI | 1132.42% |
 
 #### Match Distribution
-  - **5 matches**: 2 times
-  - **4 matches**: 55 times
-  - **3 matches**: 851 times
-  - **2 matches**: 5,614 times
-  - **1 matches**: 16,566 times
-  - **0 matches**: 17,112 times
+  - **5 matches**: 1 times
+  - **4 matches**: 73 times
+  - **3 matches**: 871 times
+  - **2 matches**: 5,595 times
+  - **1 matches**: 17,160 times
+  - **0 matches**: 17,520 times
 
 #### Best Results (5+ matches)
-| date                | result                      | predicted                |   correct_num |
-|:--------------------|:----------------------------|:-------------------------|--------------:|
-| 2026-04-23 00:00:00 | [5, 16, 17, 22, 33, 53, 55] | [16, 22, 33, 45, 53, 55] |             5 |
-| 2025-03-08 00:00:00 | [10, 38, 41, 43, 45, 48, 8] | [2, 8, 10, 38, 45, 48]   |             5 |
+| date                | result                     | predicted              |   correct_num |
+|:--------------------|:---------------------------|:-----------------------|--------------:|
+| 2021-08-31 00:00:00 | [7, 20, 37, 47, 51, 53, 5] | [3, 7, 37, 47, 51, 53] |             5 |
+
+### 🎲 Steiner Strategy
+
+#### Configuration
+| Parameter | Value |
+|-----------|-------|
+| Strategy | Steiner Strategy |
+| Tickets per day | 30 |
+| Ticket price | 10,000 VND |
+| Number range | 1 - 55 |
+| Numbers to pick | 6 |
+
+#### Backtest Period
+| Metric | Value |
+|--------|-------|
+| Start date | 2017-08-01 00:00:00 |
+| End date | 2026-07-21 00:00:00 |
+| Total draws | 1,374 |
+| Total predictions | 41,220 |
+
+#### Financial Summary
+| Metric | Value |
+|--------|-------|
+| Total cost | 412,200,000 VND |
+| Total gain | 5,065,500,000 VND |
+| Net profit/loss | 4,653,300,000 VND |
+| ROI | 1128.89% |
+
+#### Match Distribution
+  - **5 matches**: 1 times
+  - **4 matches**: 57 times
+  - **3 matches**: 740 times
+  - **2 matches**: 5,598 times
+  - **1 matches**: 17,135 times
+  - **0 matches**: 17,689 times
+
+#### Best Results (5+ matches)
+| date                | result                      | predicted               |   correct_num |
+|:--------------------|:----------------------------|:------------------------|--------------:|
+| 2021-09-25 00:00:00 | [7, 20, 27, 43, 48, 51, 37] | [7, 19, 20, 27, 43, 48] |             5 |
 
 
 

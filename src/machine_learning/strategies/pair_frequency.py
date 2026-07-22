@@ -98,13 +98,15 @@ class PairFrequencyStrategy(PredictModel):
 
         return dict(individual_freq), {k: dict(v) for k, v in cooccurrence.items()}
 
-    def predict(self, target_date: date) -> List[int]:
+    def predict(self, target_date: date, candidate_pool: List[int] | None = None) -> List[int]:
         """Predict numbers using greedy co-occurrence assembly."""
         if target_date not in self._cooccurrence_cache:
             self._cooccurrence_cache[target_date] = self._compute_cooccurrence(target_date)
         individual_freq, cooccurrence = self._cooccurrence_cache[target_date]
 
-        all_numbers = list(range(self.min_val, self.max_val + 1))
+        all_numbers = (
+            list(candidate_pool) if candidate_pool is not None else list(range(self.min_val, self.max_val + 1))
+        )
         # Laplace smoothing: every number has weight >= 1.
         freqs = [individual_freq.get(n, 0) + 1 for n in all_numbers]
 
