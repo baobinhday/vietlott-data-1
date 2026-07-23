@@ -651,3 +651,27 @@ class TestInverseHybridStrategy:
         assert model.number_predict == proposer.number_predict
         assert model.min_val == proposer.min_val
         assert model.max_val == proposer.max_val
+
+
+# ---------------------------------------------------------------------------
+# SteinerStrategy Filters
+# ---------------------------------------------------------------------------
+
+
+class TestSteinerFilters:
+    def test_is_valid_triple_consecutive(self):
+        # Consecutive numbers
+        assert not SteinerStrategy.is_valid_triple((1, 2, 10), filter_consecutive=True, filter_same_decade=False)
+        assert not SteinerStrategy.is_valid_triple((10, 15, 16), filter_consecutive=True, filter_same_decade=False)
+        assert SteinerStrategy.is_valid_triple((1, 3, 5), filter_consecutive=True, filter_same_decade=False)
+
+    def test_is_valid_triple_same_decade(self):
+        # Same decade numbers
+        assert not SteinerStrategy.is_valid_triple((12, 15, 18), filter_consecutive=False, filter_same_decade=True)
+        assert not SteinerStrategy.is_valid_triple((20, 22, 29), filter_consecutive=False, filter_same_decade=True)
+        assert SteinerStrategy.is_valid_triple((12, 25, 38), filter_consecutive=False, filter_same_decade=True)
+
+    def test_steiner_strategy_with_filters(self, df):
+        model = SteinerStrategy(df, time_predict=1, filter_consecutive=True, filter_same_decade=True)
+        pred = model.predict(df["date"].max() + timedelta(days=3))
+        _assert_valid_prediction(pred, model)
