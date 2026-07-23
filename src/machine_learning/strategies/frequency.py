@@ -156,6 +156,22 @@ class FrequencyStrategy(PredictModel):
 
         return sorted(predicted)
 
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose the ``k`` numbers ranked by frequency (hot or cold).
+
+        Honours ``strategy_type``: ``"hot"`` returns the most-frequent
+        numbers first, ``"cold"`` returns the least-frequent first.
+        Returned in ascending numeric order for determinism.
+        """
+        frequency_data = self._get_frequency_data(target_date)
+
+        if self.strategy_type == "cold":
+            sorted_nums = sorted(frequency_data.items(), key=lambda x: x[1])
+        else:  # "hot" or "balanced" both default to hot for ranking
+            sorted_nums = sorted(frequency_data.items(), key=lambda x: x[1], reverse=True)
+
+        return sorted([n for n, _ in sorted_nums[:k]])
+
 
 class HotNumbersStrategy(FrequencyStrategy):
     """Convenience class for hot numbers strategy."""
