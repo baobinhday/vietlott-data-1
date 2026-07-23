@@ -260,8 +260,7 @@ function renderBacktestResults(container: HTMLElement, result: Awaited<ReturnTyp
   tableHeader.appendChild(tableTitle);
   tableCard.appendChild(tableHeader);
 
-  const width = window.innerWidth;
-  const rowsPerPage = width >= 1920 ? result.per_draw.length : width >= 1440 ? 50 : 30;
+  const rowsPerPage = 10;
   const totalRows = result.per_draw.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
   let currentPage = 1;

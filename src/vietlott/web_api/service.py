@@ -157,6 +157,9 @@ def generate_tickets(
 
     # Build pipeline and generate.
     pipeline = PipelineStrategy(df, spec)
+    from vietlott.config.prizes import get_prize_fn
+
+    pipeline.prize_fn = get_prize_fn(product)
     # Convert to pd.Timestamp for compatibility with datetime64[us] columns.
     ts_target = pd.Timestamp(target_date)
     tickets = pipeline.generate_tickets(ts_target, ticket_count=ticket_count)
@@ -210,9 +213,9 @@ def run_backtest(
     spec["ticket_count"] = ticket_count
 
     pipeline = PipelineStrategy(df, spec)
+    from vietlott.config.prizes import get_prize_fn
 
-    # TODO(v1): Set per-product prize tables here via ``pipeline.prize_fn``
-    #           or by overriding ``pipeline.prices``.
+    pipeline.prize_fn = get_prize_fn(product)
 
     # Convert to pd.Timestamp for compatibility with datetime64[us] columns.
     bt_date_from = pd.Timestamp(date_from) if date_from is not None else None
@@ -310,7 +313,7 @@ def run_backtest(
                 "tickets": all_tickets if all_tickets else [],
                 "actual": actual,
                 "matches": int(best_main),
-                "prize_vnd": int(best_prize),
+                "prize_vnd": int(total_prize),
                 "cumulative_profit_vnd": int(cumulative_profit),
             }
         )

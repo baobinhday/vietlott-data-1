@@ -1,6 +1,6 @@
 # 🔮 Vietlott Power 655 Hybrid Prediction Summary
 
-> **Generated**: 2026-07-23 11:12:03
+> **Generated**: 2026-07-23 17:18:25
 >
 > This document compares **hybrid** strategies where Steiner proposes top-K
 > candidate tickets (each = 2 disjoint Steiner triples) and a voter strategy
@@ -22,20 +22,20 @@
 |------|----------|-----------------|-----------------|-----------------|-----|
 | 🥇 1 | Inverse Hybrid: Pair Frequency → Steiner (cov 3) | 412,200,000 | 449,500,000 | 37,300,000 | 9.05% |
 | 🥈 2 | Inverse Hybrid: Hot Numbers → Steiner (cov 3) | 412,200,000 | 449,000,000 | 36,800,000 | 8.93% |
-| 🥉 3 | Hybrid: Steiner + Hot Numbers | 412,200,000 | 186,100,000 | -226,100,000 | -54.85% |
-|    4 | Hybrid: Steiner + Not Repeat | 412,200,000 | 134,000,000 | -278,200,000 | -67.49% |
-|    5 | Steiner Strategy | 412,200,000 | 105,500,000 | -306,700,000 | -74.41% |
-|    6 | Hybrid: Steiner + Long Absence | 412,200,000 | 103,200,000 | -309,000,000 | -74.96% |
-|    7 | Hybrid: Steiner + Exponential Decay | 412,200,000 | 102,000,000 | -310,200,000 | -75.25% |
-|    8 | Hybrid: Steiner + Markov Chain | 412,200,000 | 101,900,000 | -310,300,000 | -75.28% |
-|    9 | Hybrid: Steiner + Cold Numbers | 412,200,000 | 100,200,000 | -312,000,000 | -75.69% |
-|    10 | Inverse Hybrid: Long Absence → Steiner (cov 3) | 412,200,000 | 85,000,000 | -327,200,000 | -79.38% |
-|    11 | Inverse Hybrid: Exponential Decay → Steiner (cov 3) | 412,200,000 | 78,500,000 | -333,700,000 | -80.96% |
-|    12 | Inverse Hybrid: Markov Chain → Steiner (cov 3) | 412,200,000 | 76,500,000 | -335,700,000 | -81.44% |
-|    13 | Inverse Hybrid: Pattern → Steiner (cov 3) | 412,200,000 | 75,500,000 | -336,700,000 | -81.68% |
-|    14 | Inverse Hybrid: Not Repeat → Steiner (cov 3) | 412,200,000 | 73,500,000 | -338,700,000 | -82.17% |
-|    15 | Inverse Hybrid: Cold Numbers → Steiner (cov 3) | 412,200,000 | 71,500,000 | -340,700,000 | -82.65% |
-|    16 | Hybrid: Steiner + Pair Frequency | 412,200,000 | 58,150,000 | -354,050,000 | -85.89% |
+| 🥉 3 | Hybrid: Steiner + Pair Frequency | 412,200,000 | 181,650,000 | -230,550,000 | -55.93% |
+|    4 | Hybrid: Steiner + Markov Chain | 412,200,000 | 180,950,000 | -231,250,000 | -56.10% |
+|    5 | Hybrid: Steiner + Hot Numbers | 412,200,000 | 140,300,000 | -271,900,000 | -65.96% |
+|    6 | Steiner Strategy | 412,200,000 | 105,500,000 | -306,700,000 | -74.41% |
+|    7 | Hybrid: Steiner + Long Absence | 412,200,000 | 105,100,000 | -307,100,000 | -74.50% |
+|    8 | Inverse Hybrid: Long Absence → Steiner (cov 3) | 412,200,000 | 85,000,000 | -327,200,000 | -79.38% |
+|    9 | Inverse Hybrid: Exponential Decay → Steiner (cov 3) | 412,200,000 | 78,500,000 | -333,700,000 | -80.96% |
+|    10 | Inverse Hybrid: Markov Chain → Steiner (cov 3) | 412,200,000 | 76,500,000 | -335,700,000 | -81.44% |
+|    11 | Inverse Hybrid: Pattern → Steiner (cov 3) | 412,200,000 | 75,500,000 | -336,700,000 | -81.68% |
+|    12 | Inverse Hybrid: Not Repeat → Steiner (cov 3) | 412,200,000 | 73,500,000 | -338,700,000 | -82.17% |
+|    13 | Inverse Hybrid: Cold Numbers → Steiner (cov 3) | 412,200,000 | 71,500,000 | -340,700,000 | -82.65% |
+|    14 | Hybrid: Steiner + Exponential Decay | 412,200,000 | 60,600,000 | -351,600,000 | -85.30% |
+|    15 | Hybrid: Steiner + Not Repeat | 412,200,000 | 59,000,000 | -353,200,000 | -85.69% |
+|    16 | Hybrid: Steiner + Cold Numbers | 412,200,000 | 58,900,000 | -353,300,000 | -85.71% |
 
 
 ## 🔮 Hybrid Prediction Models
@@ -105,19 +105,24 @@
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 58,150,000 VND |
-| Net profit/loss | -354,050,000 VND |
-| ROI | -85.89% |
+| Total gain | 181,650,000 VND |
+| Net profit/loss | -230,550,000 VND |
+| ROI | -55.93% |
 
 #### Match Distribution
-  - **4 matches**: 39 times
-  - **3 matches**: 773 times
-  - **2 matches**: 5,545 times
-  - **1 matches**: 16,707 times
-  - **0 matches**: 18,156 times
+  - **5 matches**: 3 times
+  - **4 matches**: 49 times
+  - **3 matches**: 743 times
+  - **2 matches**: 5,446 times
+  - **1 matches**: 16,851 times
+  - **0 matches**: 18,128 times
 
 #### Best Results (5+ matches)
-No results with 5+ matches found.
+| date                | result                     | predicted             | predicted_special   |   special_match |   correct_num |
+|:--------------------|:---------------------------|:----------------------|:--------------------|----------------:|--------------:|
+| 2018-09-06 00:00:00 | [4, 11, 15, 21, 24, 27, 7] | [1, 4, 7, 15, 21, 24] |                     |               0 |             5 |
+| 2017-12-23 00:00:00 | [7, 8, 9, 13, 28, 44, 12]  | [7, 8, 9, 11, 12, 13] |                     |               0 |             5 |
+| 2017-12-23 00:00:00 | [7, 8, 9, 13, 28, 44, 12]  | [7, 8, 9, 11, 12, 13] |                     |               0 |             5 |
 
 ### 🎲 Hybrid: Steiner + Hot Numbers
 
@@ -142,24 +147,23 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 186,100,000 VND |
-| Net profit/loss | -226,100,000 VND |
-| ROI | -54.85% |
+| Total gain | 140,300,000 VND |
+| Net profit/loss | -271,900,000 VND |
+| ROI | -65.96% |
 
 #### Match Distribution
-  - **5 matches**: 3 times
-  - **4 matches**: 52 times
-  - **3 matches**: 802 times
-  - **2 matches**: 5,546 times
-  - **1 matches**: 16,703 times
-  - **0 matches**: 18,114 times
+  - **5 matches**: 2 times
+  - **4 matches**: 42 times
+  - **3 matches**: 786 times
+  - **2 matches**: 5,453 times
+  - **1 matches**: 16,734 times
+  - **0 matches**: 18,203 times
 
 #### Best Results (5+ matches)
-| date                | result                     | predicted             | predicted_special   |   special_match |   correct_num |
-|:--------------------|:---------------------------|:----------------------|:--------------------|----------------:|--------------:|
-| 2022-03-10 00:00:00 | [1, 3, 8, 16, 19, 36, 41]  | [1, 3, 4, 8, 16, 41]  |                     |               0 |             5 |
-| 2019-07-11 00:00:00 | [6, 9, 15, 26, 35, 38, 34] | [5, 6, 9, 15, 34, 35] |                     |               0 |             5 |
-| 2018-06-21 00:00:00 | [2, 8, 19, 23, 25, 33, 32] | [2, 3, 8, 23, 25, 32] |                     |               0 |             5 |
+| date                | result                       | predicted               | predicted_special   |   special_match |   correct_num |
+|:--------------------|:-----------------------------|:------------------------|:--------------------|----------------:|--------------:|
+| 2018-06-21 00:00:00 | [2, 8, 19, 23, 25, 33, 32]   | [2, 4, 8, 23, 25, 32]   |                     |               0 |             5 |
+| 2017-09-14 00:00:00 | [22, 23, 32, 43, 44, 51, 15] | [3, 15, 23, 32, 43, 51] |                     |               0 |             5 |
 
 ### 🎲 Hybrid: Steiner + Cold Numbers
 
@@ -184,22 +188,19 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 100,200,000 VND |
-| Net profit/loss | -312,000,000 VND |
-| ROI | -75.69% |
+| Total gain | 58,900,000 VND |
+| Net profit/loss | -353,300,000 VND |
+| ROI | -85.71% |
 
 #### Match Distribution
-  - **5 matches**: 1 times
   - **4 matches**: 43 times
-  - **3 matches**: 774 times
-  - **2 matches**: 5,403 times
-  - **1 matches**: 16,776 times
-  - **0 matches**: 18,223 times
+  - **3 matches**: 748 times
+  - **2 matches**: 5,426 times
+  - **1 matches**: 16,653 times
+  - **0 matches**: 18,350 times
 
 #### Best Results (5+ matches)
-| date                | result                    | predicted            | predicted_special   |   special_match |   correct_num |
-|:--------------------|:--------------------------|:---------------------|:--------------------|----------------:|--------------:|
-| 2022-03-10 00:00:00 | [1, 3, 8, 16, 19, 36, 41] | [1, 2, 3, 8, 16, 41] |                     |               0 |             5 |
+No results with 5+ matches found.
 
 ### 🎲 Hybrid: Steiner + Long Absence
 
@@ -224,22 +225,22 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 103,200,000 VND |
-| Net profit/loss | -309,000,000 VND |
-| ROI | -74.96% |
+| Total gain | 105,100,000 VND |
+| Net profit/loss | -307,100,000 VND |
+| ROI | -74.50% |
 
 #### Match Distribution
   - **5 matches**: 1 times
-  - **4 matches**: 43 times
-  - **3 matches**: 834 times
-  - **2 matches**: 5,442 times
-  - **1 matches**: 16,875 times
-  - **0 matches**: 18,025 times
+  - **4 matches**: 52 times
+  - **3 matches**: 782 times
+  - **2 matches**: 5,391 times
+  - **1 matches**: 16,930 times
+  - **0 matches**: 18,064 times
 
 #### Best Results (5+ matches)
-| date                | result                    | predicted            | predicted_special   |   special_match |   correct_num |
-|:--------------------|:--------------------------|:---------------------|:--------------------|----------------:|--------------:|
-| 2020-10-01 00:00:00 | [3, 6, 7, 19, 38, 54, 50] | [3, 4, 6, 7, 19, 50] |                     |               0 |             5 |
+| date                | result                     | predicted             | predicted_special   |   special_match |   correct_num |
+|:--------------------|:---------------------------|:----------------------|:--------------------|----------------:|--------------:|
+| 2025-06-10 00:00:00 | [3, 6, 21, 29, 40, 41, 37] | [3, 5, 6, 21, 37, 41] |                     |               0 |             5 |
 
 ### 🎲 Hybrid: Steiner + Not Repeat
 
@@ -264,23 +265,19 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 134,000,000 VND |
-| Net profit/loss | -278,200,000 VND |
-| ROI | -67.49% |
+| Total gain | 59,000,000 VND |
+| Net profit/loss | -353,200,000 VND |
+| ROI | -85.69% |
 
 #### Match Distribution
-  - **5 matches**: 2 times
-  - **4 matches**: 37 times
-  - **3 matches**: 710 times
-  - **2 matches**: 5,421 times
-  - **1 matches**: 17,218 times
-  - **0 matches**: 17,832 times
+  - **4 matches**: 50 times
+  - **3 matches**: 680 times
+  - **2 matches**: 5,452 times
+  - **1 matches**: 17,124 times
+  - **0 matches**: 17,914 times
 
 #### Best Results (5+ matches)
-| date                | result                    | predicted             | predicted_special   |   special_match |   correct_num |
-|:--------------------|:--------------------------|:----------------------|:--------------------|----------------:|--------------:|
-| 2017-11-09 00:00:00 | [2, 3, 6, 23, 34, 36, 50] | [2, 3, 6, 23, 35, 36] |                     |               0 |             5 |
-| 2017-11-09 00:00:00 | [2, 3, 6, 23, 34, 36, 50] | [2, 3, 6, 23, 36, 41] |                     |               0 |             5 |
+No results with 5+ matches found.
 
 ### 🎲 Hybrid: Steiner + Exponential Decay
 
@@ -305,22 +302,19 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 102,000,000 VND |
-| Net profit/loss | -310,200,000 VND |
-| ROI | -75.25% |
+| Total gain | 60,600,000 VND |
+| Net profit/loss | -351,600,000 VND |
+| ROI | -85.30% |
 
 #### Match Distribution
-  - **5 matches**: 1 times
-  - **4 matches**: 48 times
-  - **3 matches**: 760 times
-  - **2 matches**: 5,454 times
-  - **1 matches**: 16,840 times
-  - **0 matches**: 18,117 times
+  - **4 matches**: 47 times
+  - **3 matches**: 742 times
+  - **2 matches**: 5,446 times
+  - **1 matches**: 16,784 times
+  - **0 matches**: 18,201 times
 
 #### Best Results (5+ matches)
-| date                | result                    | predicted            | predicted_special   |   special_match |   correct_num |
-|:--------------------|:--------------------------|:---------------------|:--------------------|----------------:|--------------:|
-| 2017-12-23 00:00:00 | [7, 8, 9, 13, 28, 44, 12] | [6, 7, 8, 9, 12, 13] |                     |               0 |             5 |
+No results with 5+ matches found.
 
 ### 🎲 Hybrid: Steiner + Markov Chain
 
@@ -345,22 +339,24 @@ No results with 5+ matches found.
 | Metric | Value |
 |--------|-------|
 | Total cost | 412,200,000 VND |
-| Total gain | 101,900,000 VND |
-| Net profit/loss | -310,300,000 VND |
-| ROI | -75.28% |
+| Total gain | 180,950,000 VND |
+| Net profit/loss | -231,250,000 VND |
+| ROI | -56.10% |
 
 #### Match Distribution
-  - **5 matches**: 1 times
-  - **4 matches**: 41 times
-  - **3 matches**: 828 times
-  - **2 matches**: 5,406 times
-  - **1 matches**: 16,934 times
-  - **0 matches**: 18,010 times
+  - **5 matches**: 3 times
+  - **4 matches**: 43 times
+  - **3 matches**: 789 times
+  - **2 matches**: 5,441 times
+  - **1 matches**: 16,826 times
+  - **0 matches**: 18,118 times
 
 #### Best Results (5+ matches)
-| date                | result                    | predicted              | predicted_special   |   special_match |   correct_num |
-|:--------------------|:--------------------------|:-----------------------|:--------------------|----------------:|--------------:|
-| 2026-02-07 00:00:00 | [3, 5, 13, 15, 29, 46, 1] | [3, 5, 13, 15, 29, 37] |                     |               0 |             5 |
+| date                | result                     | predicted             | predicted_special   |   special_match |   correct_num |
+|:--------------------|:---------------------------|:----------------------|:--------------------|----------------:|--------------:|
+| 2026-02-07 00:00:00 | [3, 5, 13, 15, 29, 46, 1]  | [1, 3, 5, 14, 15, 29] |                     |               0 |             5 |
+| 2025-06-10 00:00:00 | [3, 6, 21, 29, 40, 41, 37] | [1, 3, 6, 21, 37, 41] |                     |               0 |             5 |
+| 2023-11-11 00:00:00 | [2, 3, 4, 19, 41, 42, 23]  | [2, 3, 4, 23, 35, 42] |                     |               0 |             5 |
 
 ### 🎲 Inverse Hybrid: Pair Frequency → Steiner (cov 3)
 
