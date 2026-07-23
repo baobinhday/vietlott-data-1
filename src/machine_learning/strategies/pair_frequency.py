@@ -125,3 +125,16 @@ class PairFrequencyStrategy(PredictModel):
             remaining.remove(chosen)
 
         return sorted(predicted)
+
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose the ``k`` numbers with the highest individual frequency.
+
+        Uses the same lookback window as :meth:`predict`.  Ties broken by
+        numeric order so the proposal is deterministic.  Returned in
+        ascending numeric order.
+        """
+        if target_date not in self._cooccurrence_cache:
+            self._cooccurrence_cache[target_date] = self._compute_cooccurrence(target_date)
+        individual_freq, _ = self._cooccurrence_cache[target_date]
+        ranked = sorted(individual_freq.items(), key=lambda x: (-x[1], x[0]))
+        return sorted([n for n, _ in ranked[:k]])
