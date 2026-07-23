@@ -27,6 +27,7 @@ from machine_learning.strategies import (
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
+from vietlott.config.prizes import _prize_for_power_645
 from vietlott.config.products import get_config
 
 _StrategyEntry = Tuple[str, int, PredictModel]
@@ -396,6 +397,7 @@ class Power645PredictionSummaryGenerator:
         results: List[_StrategyEntry] = []
         for name, model in strategy_defs:
             model.apply_product_config(config)
+            model.prize_fn = _prize_for_power_645
             logger.info(f"Running {name} on Power 6/45...")
             model.backtest(date_from=date_from, date_to=date_to)
             model.evaluate()
