@@ -32,23 +32,7 @@ from vietlott.config.products import get_config
 _StrategyEntry = Tuple[str, int, PredictModel]
 
 
-def _prize_for_5_35(main_match, special_match):
-    """Prize tiers for Power 5/35 (VND)."""
-    if main_match == 5 and special_match == 1:
-        return 6_000_000_000  # Jackpot
-    if main_match == 5:
-        return 10_000_000  # Nhất
-    if main_match == 4 and special_match == 1:
-        return 5_000_000  # Nhì
-    if main_match == 4:
-        return 500_000  # Ba
-    if main_match == 3 and special_match == 1:
-        return 100_000  # Tư
-    if main_match == 3:
-        return 30_000  # Năm
-    if special_match == 1 and main_match >= 1:
-        return 10_000  # KK
-    return 0
+from vietlott.config.prizes import _prize_for_power_535
 
 
 class Power535PredictionSummaryGenerator:
@@ -415,7 +399,7 @@ class Power535PredictionSummaryGenerator:
         results: List[_StrategyEntry] = []
         for name, model in strategy_defs:
             model.apply_product_config(config)
-            model.prize_fn = _prize_for_5_35
+            model.prize_fn = _prize_for_power_535
             logger.info(f"Running {name} on Power 5/35...")
             model.backtest(date_from=date_from, date_to=date_to)
             model.evaluate()

@@ -200,6 +200,10 @@ class PredictModel:
         self.special_min = getattr(config, "special_min", 0)
         self.special_max = getattr(config, "special_max", 0)
         self.special_count = getattr(config, "special_count", 1)
+        if hasattr(config, "name"):
+            from vietlott.config.prizes import get_prize_fn
+
+            self.prize_fn = get_prize_fn(config.name)
         return self
 
     def predict_special(self, date, candidate_pool=None):
