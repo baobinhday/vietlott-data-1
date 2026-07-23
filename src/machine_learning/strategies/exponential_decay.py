@@ -148,3 +148,16 @@ class ExponentialDecayStrategy(PredictModel):
             predicted.extend(available)
 
         return sorted(predicted)
+
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose ``k`` numbers ranked by exponentially-decayed frequency.
+
+        Honours ``self.hot`` — ``True`` returns high-score numbers first,
+        ``False`` returns low-score numbers first.  Returned in ascending
+        numeric order for determinism.
+        """
+        if target_date not in self._score_cache:
+            self._score_cache[target_date] = self._compute_scores(target_date)
+        scores = self._score_cache[target_date]
+        ranked = sorted(scores.keys(), key=lambda n: scores[n], reverse=self.hot)
+        return sorted(ranked[:k])

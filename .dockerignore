@@ -1,0 +1,25 @@
+# Version control
+.git
+.github
+
+# Python virtual envs & caches
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.ruff_cache
+.pytest_cache
+
+# Data is mounted at runtime via docker-compose
+data/
+
+# Node artifacts
+node_modules
+web/node_modules
+web/dist
+
+# Docs & misc
+*.md
+docs/

@@ -179,3 +179,46 @@ class PatternStrategy(PredictModel):
                 predicted.extend(avail)
 
         return sorted(predicted[: self.number_predict])
+
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose the ``k`` numbers weighted by range-bucket popularity.
+
+        Each range bucket (5 equal sub-ranges of ``[min_val, max_val]``)
+        contributes a share of the proposal proportional to its observed
+        draw frequency.  Within a bucket, numbers are selected
+        uniformly at random using a deterministic per-date seed.
+        """
+        import random
+
+        if target_date not in self._analysis_cache:
+            self._analysis_cache[target_date] = self._analyze_patterns(target_date)
+        analysis = self._analysis_cache[target_date]
+
+        range_counts = analysis["range_counts"]
+        total = sum(range_counts.values())
+        if total == 0:
+            return list(range(self.min_val, min(self.min_val + k, self.max_val + 1)))
+
+        # Number of picks per bucket proportional to its count.
+        per_bucket: list = [max(1, round(k * range_counts[i] / total)) for i in range(5)]
+        # Adjust to total k (account for rounding drift).
+        drift = k - sum(per_bucket)
+        for i in range(abs(drift)):
+            per_bucket[i % 5] += 1 if drift > 0 else -1
+
+        rng = random.Random(f"pattern-{target_date}-{k}")
+        chosen: list = []
+        for i, (lo, hi) in enumerate(self._ranges):
+            bucket_pool = list(range(lo, hi + 1))
+            if not bucket_pool:
+                continue
+            take = min(per_bucket[i], len(bucket_pool))
+            chosen.extend(rng.sample(bucket_pool, take))
+        # Pad/trim to exactly k.
+        if len(chosen) < k:
+            for n in range(self.min_val, self.max_val + 1):
+                if n not in chosen:
+                    chosen.append(n)
+                if len(chosen) == k:
+                    break
+        return sorted(chosen[:k])

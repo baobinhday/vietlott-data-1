@@ -208,7 +208,9 @@ class PredictionSummaryGenerator:
         )
 
         mask = (s_correct >= 5).to_numpy()
-        df_best = df_eval.loc[mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]].copy()
+        df_best = df_eval.loc[
+            mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]
+        ].copy()
         df_best["result"] = df_best["result"].apply(
             lambda x: str([int(i) for i in x]) if hasattr(x, "__iter__") else str(x)
         )

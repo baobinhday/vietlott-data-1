@@ -200,11 +200,303 @@ class SteinerStrategy(PredictModel):
         return result
 
     # ------------------------------------------------------------------
+    # Constrained Steiner on a custom pool (used by InverseHybridStrategy)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_steiner_on_pool(pool: List[int]) -> List[Tuple[int, int, int]]:
+        """Greedy pair-disjoint triple decomposition of a custom pool.
+
+        ``pool`` must be a list of distinct integers.  Returned triples
+        are sorted ascending so the algorithm is deterministic.
+        """
+        sorted_pool = sorted(set(pool))
+        n = len(sorted_pool)
+        if n < 3:
+            return []
+        triples: List[Tuple[int, int, int]] = []
+        covered: set = set()
+        for a in range(n):
+            for b in range(a + 1, n):
+                pair = (a, b)
+                if pair in covered:
+                    continue
+                for c in range(b + 1, n):
+                    p1 = (a, c)
+                    p2 = (b, c)
+                    if p1 in covered or p2 in covered:
+                        continue
+                    triples.append((sorted_pool[a], sorted_pool[b], sorted_pool[c]))
+                    covered.add(pair)
+                    covered.add(p1)
+                    covered.add(p2)
+                    break
+        return triples
+
+    def _pool_pair_freq(self, target_date: date, pool: List[int]) -> Dict[Tuple[int, int], int]:
+        """Pair co-occurrence counts for pairs drawn from ``pool`` only.
+
+        Reuses the cached :meth:`_pair_freq` and filters keys to those
+        whose two endpoints are both in ``pool``.  This keeps historical
+        computation amortised across many constrained-pool calls.
+        """
+        full = self._pair_freq(target_date)
+        pool_set = set(pool)
+        return {k: v for k, v in full.items() if k[0] in pool_set and k[1] in pool_set}
+
+    def predict_from_pool(
+        self,
+        target_date: date,
+        pool: List[int],
+        coverage: int = 3,
+        number_predict: Optional[int] = None,
+    ) -> List[int]:
+        """Pick ``number_predict`` numbers from ``pool`` using Steiner triples.
+
+        The structural unit adapts to ``number_predict`` (defaults to
+        ``self.number_predict``) so the same method works for any
+        Vietlott product:
+
+        ===========  =========================  ==================================
+        number_predict  Steiner structure         example
+        ===========  =========================  ==================================
+        3            1 triple                   [a, b, c]
+        4            1 triple + 1 singleton     [a, b, c, d]
+        5            1 triple + 1 disjoint pair [a, b, c, d, e]
+        6            2 disjoint triples         [a, b, c, d, e, f]
+        ===========  =========================  ==================================
+
+        For 5/35 this method returns 5 numbers natively (1 Steiner triple
+        + 1 pair-disjoint pair from another triple), instead of the
+        previous behaviour of building 6 numbers and slicing off the
+        last.
+
+        Parameters
+        ----------
+        target_date:
+            Date for which to generate the prediction.
+        pool:
+            Candidate pool of distinct numbers (e.g. the 15 numbers
+            proposed by another strategy).  Need not be sorted.
+        coverage:
+            Number of disjoint candidate tickets to produce.  The i-th
+            call (modulo coverage) returns the i-th ranked ticket,
+            allowing ``time_predict`` to diversify.
+        number_predict:
+            Number of distinct numbers in the returned ticket.  When
+            ``None`` (default), uses ``self.number_predict``.  Pass an
+            explicit value when the caller has a different ticket size
+            than this Steiner instance (e.g. a 5/35 hybrid driving a
+            steiner built with the default 6/55 size).
+
+        Returns
+        -------
+        Sorted list of ``number_predict`` numbers drawn from ``pool``.
+        """
+        if number_predict is None:
+            number_predict = self.number_predict
+        sorted_pool = sorted(set(pool))
+        if len(sorted_pool) < number_predict:
+            # Not enough candidates — return whatever we have, padded
+            # with sequential numbers from the full range if needed.
+            needed = number_predict - len(sorted_pool)
+            padded = (
+                list(sorted_pool) + [n for n in range(self.min_val, self.max_val + 1) if n not in sorted_pool][:needed]
+            )
+            return sorted(padded)[:number_predict]
+
+        pool_freq = self._pool_pair_freq(target_date, sorted_pool)
+
+        # Special case: number_predict <= 2 has no Steiner triple to
+        # anchor on, so we just pick the highest-frequency pair /
+        # singleton from the pool.
+        if number_predict <= 2:
+            unit = self._best_disjoint_unit(set(), [], pool_freq, number_predict, sorted_pool)
+            if not unit:
+                return sorted(sorted_pool)[:number_predict]
+            # Pad to number_predict when the pool has few candidates.
+            if len(unit) < number_predict:
+                for n in sorted_pool:
+                    if n not in unit:
+                        unit.add(n)
+                    if len(unit) >= number_predict:
+                        break
+            return sorted(unit)[:number_predict]
+
+        triples = self._build_steiner_on_pool(sorted_pool)
+        if not triples:
+            return sorted(sorted_pool)[:number_predict]
+
+        # Decompose number_predict into Steiner units.
+        # Example: 5 -> [3, 2]; 6 -> [3, 3]; 4 -> [3, 1]; 3 -> [3]
+        units = self._decompose_into_units(number_predict)
+
+        # Sort triples by pair-score for greedy ticket assembly.
+        scored_triples = [(self._score_triple(t, pool_freq), idx, t) for idx, t in enumerate(triples)]
+        scored_triples.sort(key=lambda x: (-x[0], x[1]))
+
+        tickets: List[Tuple[int, ...]] = []
+        seen: set = set()
+        for _, _, t1 in scored_triples:
+            if len(tickets) >= coverage:
+                break
+            ticket_nums: set = set(t1)
+            success = True
+            for unit_size in units[1:]:
+                unit_set = self._best_disjoint_unit(ticket_nums, triples, pool_freq, unit_size, sorted_pool)
+                if not unit_set:
+                    success = False
+                    break
+                ticket_nums |= unit_set
+            if not success or len(ticket_nums) != number_predict:
+                continue
+            ticket = tuple(sorted(ticket_nums))
+            if ticket in seen:
+                continue
+            seen.add(ticket)
+            tickets.append(ticket)
+
+        if not tickets:
+            return sorted(sorted_pool)[:number_predict]
+
+        idx = self._call_counter
+        self._call_counter += 1
+        return list(tickets[idx % len(tickets)])
+
+    # ------------------------------------------------------------------
+    # Structural-unit helpers (used by predict_from_pool)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decompose_into_units(n: int) -> List[int]:
+        """Decompose ``n`` into a sequence of Steiner unit sizes (3, 2, 1).
+
+        Prefers 3-unit (triple) > 2-unit (pair) > 1-unit (singleton) so
+        the resulting ticket is as "Steiner-flavoured" as possible.
+
+        Examples
+        --------
+        >>> SteinerStrategy._decompose_into_units(3)
+        [3]
+        >>> SteinerStrategy._decompose_into_units(4)
+        [3, 1]
+        >>> SteinerStrategy._decompose_into_units(5)
+        [3, 2]
+        >>> SteinerStrategy._decompose_into_units(6)
+        [3, 3]
+        >>> SteinerStrategy._decompose_into_units(7)
+        [3, 3, 1]
+        """
+        if n < 1:
+            return []
+        units: List[int] = []
+        while n >= 3:
+            units.append(3)
+            n -= 3
+        if n == 2:
+            units.append(2)
+        elif n == 1:
+            units.append(1)
+        return units
+
+    def _best_disjoint_unit(
+        self,
+        used: set,
+        triples: List[Tuple[int, int, int]],
+        freq: Dict[Tuple[int, int], int],
+        unit_size: int,
+        pool: List[int],
+    ) -> set:
+        """Find the best (highest-scoring) Steiner unit of ``unit_size``
+        that is pair-disjoint from ``used``.
+
+        * ``unit_size == 3`` — best disjoint triple from the partial
+          Steiner system.  Score = sum of the triple's 3 internal
+          pair-frequencies (delegates to :meth:`_score_triple`).
+        * ``unit_size == 2`` — best disjoint pair.  Iterates over all
+          pairs in ``pool`` (not just those in triples) since a pair
+          may be the chosen unit even when it never appeared inside a
+          Steiner triple.
+        * ``unit_size == 1`` — best singleton.  Score = sum of the
+          number's pair-frequencies with every number in ``used``; if
+          ``used`` is empty, falls back to the singleton with the
+          highest sum of pair-frequencies with the rest of the pool.
+
+        Returns an empty set if no disjoint unit can be found.
+        """
+        if unit_size == 3:
+            best: Optional[Tuple[int, int, int]] = None
+            best_score = -1
+            for t in triples:
+                if set(t) & used:
+                    continue
+                s = self._score_triple(t, freq)
+                if s > best_score:
+                    best_score = s
+                    best = t
+            return set(best) if best is not None else set()
+
+        if unit_size == 2:
+            best_pair: Optional[Tuple[int, int]] = None
+            best_score = -1
+            for i, a in enumerate(pool):
+                if a in used:
+                    continue
+                for b in pool[i + 1 :]:
+                    if b in used:
+                        continue
+                    s = freq.get((a, b), 0)
+                    if s > best_score:
+                        best_score = s
+                        best_pair = (a, b)
+            return set(best_pair) if best_pair is not None else set()
+
+        if unit_size == 1:
+            if not used:
+                # No anchor — pick the singleton with the highest
+                # aggregate pair-freq with the rest of the pool.
+                best_n: Optional[int] = None
+                best_score = -1
+                for n in pool:
+                    s = sum(freq.get((min(n, m), max(n, m)), 0) for m in pool if m != n)
+                    if s > best_score:
+                        best_score = s
+                        best_n = n
+                return {best_n} if best_n is not None else set()
+            scores: Dict[int, int] = {}
+            for n in pool:
+                if n in used:
+                    continue
+                s = sum(freq.get((min(n, a), max(n, a)), 0) for a in used)
+                scores[n] = s
+            if not scores:
+                return set()
+            return {max(scores, key=lambda k: scores[k])}
+
+        return set()
+
+    # ------------------------------------------------------------------
     # PredictModel interface
     # ------------------------------------------------------------------
 
+    def filter_pool(self, target_date, pool: List[int], k: int) -> List[int]:
+        """Filter a candidate pool using Steiner's native ``predict_from_pool``.
+
+        Returns exactly ``k`` numbers from ``pool`` structured as Steiner
+        triples (or fallback if the pool or Steiner system is too small).
+        """
+        if k >= len(pool):
+            return sorted(set(pool))
+        picked = self.predict_from_pool(target_date, pool=list(pool), coverage=3, number_predict=k)
+        return sorted(set(picked))
+
     def predict(self, date: date) -> List[int]:
-        """Predict 6 numbers as the i-th best pair of disjoint Steiner triples."""
+        """Predict numbers as the i-th best pair of disjoint Steiner triples.
+
+        Returns ``self.number_predict`` numbers (sliced from the 6-element
+        union of 2 disjoint triples), so it works for any game — 5/35
+        returns 5, 6/55 and 6/45 return 6.
+        """
         pairs = self._top_disjoint_pairs(date, k=max(self.time_predict, 1))
         idx = self._call_counter
         self._call_counter += 1
@@ -230,4 +522,4 @@ class SteinerStrategy(PredictModel):
             return sorted(nums[: self.number_predict])
 
         t1, t2 = pairs[idx % len(pairs)]
-        return sorted(set(t1) | set(t2))
+        return sorted(set(t1) | set(t2))[: self.number_predict]

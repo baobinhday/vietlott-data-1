@@ -202,3 +202,27 @@ class MarkovChainStrategy(PredictModel):
         predicted = [all_numbers[i] for i in chosen_indices]
 
         return sorted(predicted)
+
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose the ``k`` numbers with the highest transition score.
+
+        The score for each number ``n`` aggregates ``matrix[s][n]`` over
+        every ``s`` in the most-recent preceding draw.  Falls back to
+        numeric order when no prior draw is available.  Returned in
+        ascending numeric order.
+        """
+        if target_date not in self._cache:
+            self._cache[target_date] = self._build_transition_matrix(target_date)
+
+        prev_draw, matrix = self._cache[target_date]
+        all_numbers = list(range(self.min_val, self.max_val + 1))
+
+        if prev_draw is None or not matrix:
+            return all_numbers[:k]
+
+        scored = [
+            (sum(matrix[s].get(n, 0.0) for s in prev_draw if self.min_val <= s <= self.max_val) + self.smoothing, n)
+            for n in all_numbers
+        ]
+        scored.sort(key=lambda x: -x[0])
+        return sorted([n for _, n in scored[:k]])

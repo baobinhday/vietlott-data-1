@@ -103,3 +103,11 @@ class LongAbsenceStrategy(PredictModel):
             predicted.extend(random.sample(remaining, min(extra_needed, len(remaining))))
 
         return sorted(predicted)
+
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose the ``k`` most-absent numbers (longest time unseen).
+
+        Used as the proposer role in :class:`InverseHybridStrategy`.  Returns
+        the ``k`` most-overdue numbers, sorted in ascending numeric order.
+        """
+        return sorted(self._days_since_last_appearance(target_date)[:k])
