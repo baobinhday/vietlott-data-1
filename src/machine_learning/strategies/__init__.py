@@ -45,12 +45,20 @@ HybridStrategy
     number pool, and a voter strategy is invoked with ``candidate_pool``
     set to that pool.  The voter runs its own original algorithm
     constrained to the pool, so each hybrid produces a distinct output.
+InverseHybridStrategy
+    Structural mirror of ``HybridStrategy``: a proposer strategy (any
+    ``PredictModel`` subclass) emits a top-K candidate pool and Steiner
+    picks ``number_predict`` numbers from that pool using its pair-disjoint
+    triple decomposition with configurable coverage.  Useful when you want
+    the proposer's signal to narrow the search space but the final ticket
+    to satisfy the Steiner structural constraint.
 """
 
 from .base import PredictModel
 from .exponential_decay import ExponentialDecayStrategy
 from .frequency import ColdNumbersStrategy, FrequencyStrategy, HotNumbersStrategy
 from .hybrid import HybridStrategy
+from .inverse_hybrid import InverseHybridStrategy
 from .long_absence import LongAbsenceStrategy
 from .markov_chain import MarkovChainStrategy
 from .not_repeat import NotRepeatStrategy
@@ -73,4 +81,5 @@ __all__ = [
     "MarkovChainStrategy",
     "SteinerStrategy",
     "HybridStrategy",
+    "InverseHybridStrategy",
 ]
