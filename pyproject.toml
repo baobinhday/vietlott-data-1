@@ -35,6 +35,7 @@ Issues = "https://github.com/vietvudanh/vietlott-data/issues"
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "build", "setuptools", "wheel", "twine", "pre-commit"]
 ml = ["numpy", "scikit-learn", "matplotlib", "pandas"]
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "pydantic>=2.0", "pandas>=2.0"]
 
 [project.scripts]
 vietlott-crawl = "vietlott.cli.crawl:crawl"
