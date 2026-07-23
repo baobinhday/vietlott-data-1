@@ -9,7 +9,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import pandas as pd
 import polars as pl
 from loguru import logger
 
@@ -17,6 +16,8 @@ from machine_learning.strategies import (
     ColdNumbersStrategy,
     ExponentialDecayStrategy,
     HotNumbersStrategy,
+    HybridStrategy,
+    InverseHybridStrategy,
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
@@ -26,7 +27,6 @@ from machine_learning.strategies import (
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
-from machine_learning.strategies.hybrid import HybridStrategy
 from vietlott.config.products import get_config
 
 _StrategyEntry = Tuple[str, int, PredictModel]
@@ -283,6 +283,133 @@ class Power535PredictionSummaryGenerator:
                     time_predict=tpd,
                 ),
             ),
+            (
+                "Inverse Hybrid: Pair Frequency → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=PairFrequencyStrategy(
+                        df_pd, time_predict=tpd, min_val=self.min_val, max_val=self.max_val, lookback_days=365
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Hot Numbers → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=HotNumbersStrategy(
+                        df_pd,
+                        time_predict=tpd,
+                        min_val=self.min_val,
+                        max_val=self.max_val,
+                        lookback_days=365,
+                        selection_weight=0.7,
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Cold Numbers → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=ColdNumbersStrategy(
+                        df_pd,
+                        time_predict=tpd,
+                        min_val=self.min_val,
+                        max_val=self.max_val,
+                        lookback_days=365,
+                        selection_weight=0.7,
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Long Absence → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=LongAbsenceStrategy(
+                        df_pd, time_predict=tpd, min_val=self.min_val, max_val=self.max_val, top_n=15
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Not Repeat → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=NotRepeatStrategy(
+                        df_pd,
+                        time_predict=tpd,
+                        min_val=self.min_val,
+                        max_val=self.max_val,
+                        lookback_days=30,
+                        avoid_weight=0.8,
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Exponential Decay → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=ExponentialDecayStrategy(
+                        df_pd,
+                        time_predict=tpd,
+                        half_life_days=90,
+                        min_val=self.min_val,
+                        max_val=self.max_val,
+                        hot=True,
+                        selection_weight=0.8,
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Markov Chain → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=MarkovChainStrategy(
+                        df_pd,
+                        time_predict=tpd,
+                        min_val=self.min_val,
+                        max_val=self.max_val,
+                        lookback_days=365,
+                        smoothing=0.5,
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Pattern → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=PatternStrategy(
+                        df_pd,
+                        time_predict=tpd,
+                        min_val=self.min_val,
+                        max_val=self.max_val,
+                        lookback_days=180,
+                        pattern_weight=0.6,
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
         ]
 
         results: List[_StrategyEntry] = []
@@ -345,7 +472,9 @@ class Power535PredictionSummaryGenerator:
         )
 
         mask = (s_correct >= 4).to_numpy()
-        df_best = df_eval.loc[mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]].copy()
+        df_best = df_eval.loc[
+            mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]
+        ].copy()
         df_best["result"] = df_best["result"].apply(
             lambda x: str([int(i) for i in x]) if hasattr(x, "__iter__") else str(x)
         )
