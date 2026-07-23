@@ -44,14 +44,43 @@ class SteinerStrategy(PredictModel):
         min_val: int = PredictModel.POWER_655_MIN_VAL,
         max_val: int = PredictModel.POWER_655_MAX_VAL,
         lookback_days: Optional[int] = 365,
+        filter_consecutive: bool = True,
+        filter_same_decade: bool = True,
     ):
         super().__init__(df, time_predict, min_val, max_val)
         self.lookback_days = lookback_days
+        self.filter_consecutive = filter_consecutive
+        self.filter_same_decade = filter_same_decade
         self._triples: List[Tuple[int, int, int]] = self._build_partial_steiner()
         self.df_sorted: pd.DataFrame = df.sort_values("date").reset_index(drop=True)
         self._pair_freq_cache: Dict[date, Dict[Tuple[int, int], int]] = {}
         self._top_pairs_cache: Dict[Tuple[date, int], List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]] = {}
         self._call_counter: int = 0
+
+    @staticmethod
+    def is_valid_triple(
+        triple: Tuple[int, int, int],
+        filter_consecutive: bool = True,
+        filter_same_decade: bool = True,
+    ) -> bool:
+        """
+        Check if a triple satisfies structural filters.
+
+        Parameters
+        ----------
+        triple:
+            Tuple of 3 numbers (a, b, c).
+        filter_consecutive:
+            If True, rejects triples containing adjacent consecutive numbers (b - a == 1 or c - b == 1).
+        filter_same_decade:
+            If True, rejects triples where all 3 numbers are in the same decade (a // 10 == b // 10 == c // 10).
+        """
+        a, b, c = sorted(triple)
+        if filter_consecutive and ((b - a == 1) or (c - b == 1)):
+            return False
+        if filter_same_decade and ((a // 10) == (b // 10) == (c // 10)):
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Partial Steiner triple system construction
@@ -127,6 +156,9 @@ class SteinerStrategy(PredictModel):
 
         freq = self._pair_freq(target_date)
         triples = self._triples
+        if self.filter_consecutive or self.filter_same_decade:
+            triples = [t for t in triples if self.is_valid_triple(t, self.filter_consecutive, self.filter_same_decade)]
+
         if not triples:
             self._top_pairs_cache[cache_key] = []
             return []

@@ -32,19 +32,7 @@ from vietlott.config.products import get_config
 _StrategyEntry = Tuple[str, int, PredictModel]
 
 
-def _prize_for_6_55(main_match, special_match):
-    """Prize tiers for Power 6/55 (VND)."""
-    if main_match == 6:
-        return 30_000_000_000  # JP1
-    if main_match == 5 and special_match == 1:
-        return 3_000_000_000  # JP2
-    if main_match == 5:
-        return 40_000_000  # Nhất
-    if main_match == 4:
-        return 500_000  # Nhì
-    if main_match == 3:
-        return 50_000  # Ba
-    return 0
+from vietlott.config.prizes import _prize_for_6_55
 
 
 class PredictionSummaryGenerator:
