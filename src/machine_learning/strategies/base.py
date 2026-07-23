@@ -218,6 +218,58 @@ class PredictModel:
             return []
         return list(range(self.special_min, self.special_max + 1))
 
+    def propose_top_numbers(self, target_date, k: int) -> List[int]:
+        """Return up to ``k`` numbers from the strategy's native signal.
+
+        Acts as the "proposer" role in :class:`InverseHybridStrategy`:
+        another component (e.g. Steiner) uses this list as the candidate
+        pool to pick from with its own algorithm.
+
+        The default fallback returns the first ``k`` numbers in
+        ``[min_val, max_val]``.  Strategies with their own scoring
+        (frequency, absence, co-occurrence, etc.) should override this
+        to expose a more meaningful ranking.
+        """
+        del target_date  # unused in fallback
+        return list(range(self.min_val, min(self.min_val + k, self.max_val + 1)))
+
+    def filter_pool(self, target_date, pool: List[int], k: int) -> List[int]:
+        """Filter a candidate pool to ``k`` numbers using this strategy.
+
+        The default implementation calls ``predict(target_date, candidate_pool=pool)``
+        and returns the intersection of its output with ``pool``, capped to ``k``.
+        If the strategy returns fewer than ``k`` numbers from the pool, remaining
+        slots are filled from the pool in sorted order.
+
+        Sub-classes that have a native "pick from a given pool" method
+        (e.g. ``SteinerStrategy.predict_from_pool``) should override this for
+        better results.
+
+        Parameters
+        ----------
+        target_date:
+            Date for which to generate the prediction.
+        pool:
+            Candidate pool of distinct numbers to pick from.
+        k:
+            Desired number of output numbers (max).
+
+        Returns
+        -------
+        Sorted list of up to ``k`` numbers drawn from ``pool``.  May return
+        fewer than ``k`` if the pool itself is smaller.
+        """
+        if k >= len(pool):
+            return sorted(set(pool))
+        predicted = self.predict(target_date, candidate_pool=pool)
+        pool_set = set(pool)
+        result = [n for n in predicted if n in pool_set]
+        # Top-up from pool if the strategy returned fewer than k.
+        if len(result) < k:
+            extra_pool = [n for n in pool if n not in set(result)]
+            result = result + sorted(extra_pool[: k - len(result)])
+        return sorted(result[:k])
+
     def _prize_for(self, main_match, special_match):
         """Compute prize for (main_match, special_match)."""
         if self.prize_fn is not None:

@@ -6,7 +6,7 @@ LOGURU_LEVEL := INFO
 export
 
 all: lint test
-.PHONY: all requirements-dev test lint build pypi run-crawl run-missing
+.PHONY: all requirements-dev test lint build pypi run-crawl run-missing docker-build docker-up docker-down docker-logs
 
 .venv:
 	@echo "Initializing virtual environment..."
@@ -44,3 +44,15 @@ run-missing: .venv
 	@echo "Running missing scripts..."
 	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/vietlott/cli/missing.py keno
 	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/vietlott/cli/missing.py power_535
+
+docker-build:                              ## Build the Docker image
+	docker build -t vietlott-strategy-builder .
+
+docker-up:                                 ## Run the full stack via docker compose
+	docker compose up --build
+
+docker-down:                               ## Stop the stack
+	docker compose down
+
+docker-logs:                               ## Tail logs
+	docker compose logs -f
