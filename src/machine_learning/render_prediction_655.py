@@ -18,10 +18,12 @@ from machine_learning.strategies import (
     ExponentialDecayStrategy,
     HotNumbersStrategy,
     HybridStrategy,
+    InverseHybridStrategy,
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
     PairFrequencyStrategy,
+    PatternStrategy,
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
@@ -169,6 +171,88 @@ class HybridPredictionSummaryGenerator:
                     time_predict=tpd,
                 ),
             ),
+            (
+                "Inverse Hybrid: Pair Frequency → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=PairFrequencyStrategy(df_pd, time_predict=tpd, lookback_days=365),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Hot Numbers → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=HotNumbersStrategy(df_pd, time_predict=tpd, lookback_days=365, selection_weight=0.7),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Cold Numbers → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=ColdNumbersStrategy(df_pd, time_predict=tpd, lookback_days=365, selection_weight=0.7),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Long Absence → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=LongAbsenceStrategy(df_pd, time_predict=tpd, top_n=15),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Not Repeat → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=NotRepeatStrategy(df_pd, time_predict=tpd, lookback_days=30, avoid_weight=0.8),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Exponential Decay → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=ExponentialDecayStrategy(
+                        df_pd, time_predict=tpd, half_life_days=90, hot=True, selection_weight=0.8
+                    ),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Markov Chain → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=MarkovChainStrategy(df_pd, time_predict=tpd, lookback_days=365, smoothing=0.5),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
+            (
+                "Inverse Hybrid: Pattern → Steiner (cov 3)",
+                InverseHybridStrategy(
+                    proposer=PatternStrategy(df_pd, time_predict=tpd, lookback_days=180, pattern_weight=0.6),
+                    steiner=steiner_strategy,
+                    top_k=15,
+                    coverage=3,
+                    time_predict=tpd,
+                ),
+            ),
         ]
 
         results: List[_StrategyEntry] = []
@@ -204,8 +288,12 @@ class HybridPredictionSummaryGenerator:
         return f"""## 📊 Hybrid Strategy Performance Comparison
 
 > Sorted by ROI (best → worst).  All strategies backtested with **{strategies[0][1]} tickets/draw**.
-> Each hybrid uses Steiner as proposer (top-15 number pool) and a voter
-> strategy is invoked with ``candidate_pool`` set to that pool.
+>
+> * **Hybrid (Steiner → voter)**: Steiner proposes the top-15 number
+>   pool and a voter strategy picks 6 using its own algorithm.
+> * **Inverse Hybrid (voter → Steiner)**: a voter strategy proposes the
+>   top-15 candidate pool and Steiner picks 6 from it using pair-disjoint
+>   triple decomposition with coverage 3 (3 disjoint (T1, T2) tickets).
 
 {chr(10).join(lines)}
 """
@@ -241,7 +329,9 @@ class HybridPredictionSummaryGenerator:
         )
 
         mask = (s_correct >= 5).to_numpy()
-        df_best = df_eval.loc[mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]].copy()
+        df_best = df_eval.loc[
+            mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]
+        ].copy()
         df_best["result"] = df_best["result"].apply(
             lambda x: str([int(i) for i in x]) if hasattr(x, "__iter__") else str(x)
         )

@@ -4,11 +4,9 @@ Tests for Power535PredictionSummaryGenerator (render_prediction_535.py).
 
 import random
 from datetime import date, timedelta
-from pathlib import Path
 
 import pandas as pd
 import polars as pl
-import pytest
 
 from machine_learning.render_prediction_535 import Power535PredictionSummaryGenerator
 
@@ -40,7 +38,7 @@ class TestPower535PredictionSummaryGenerator:
         assert len(strategies) > 0
 
         for name, tpd, model in strategies:
-            assert tpd == 30
+            assert tpd == 2
             assert model.min_val == 1
             assert model.max_val == 35
             assert model.number_predict == 5

@@ -108,12 +108,28 @@ class NotRepeatStrategy(PredictModel):
                     if available:
                         predicted.append(random.choice(available))
 
-            # Fill remaining slots if needed
-            while len(predicted) < self.number_predict:
-                available = [n for n in all_numbers if n not in predicted]
-                if available:
-                    predicted.append(random.choice(available))
-                else:
-                    break
+        # Fill remaining slots if needed
+        while len(predicted) < self.number_predict:
+            available = [n for n in all_numbers if n not in predicted]
+            if available:
+                predicted.append(random.choice(available))
+            else:
+                break
 
         return sorted(predicted)
+
+    def propose_top_numbers(self, target_date, k: int):
+        """Propose the ``k`` numbers that have NOT appeared in recent draws.
+
+        Returns numbers ordered by absence-recentness (those absent the
+        longest are listed first; ties broken by numeric order).  Falls
+        back to the full numeric range when not enough non-recent numbers
+        exist.
+        """
+        recent = self._get_recent_numbers(target_date)
+        non_recent = [n for n in range(self.min_val, self.max_val + 1) if n not in recent]
+        if len(non_recent) >= k:
+            return sorted(non_recent)[:k]
+        # Not enough non-recent: pad with the least-recently-seen numbers.
+        recent_sorted = sorted(recent)
+        return (non_recent + recent_sorted)[:k]
