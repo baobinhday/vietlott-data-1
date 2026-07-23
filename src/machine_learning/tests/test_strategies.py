@@ -19,6 +19,7 @@ from machine_learning.strategies import (
     ExponentialDecayStrategy,
     HotNumbersStrategy,
     HybridStrategy,
+    InverseHybridStrategy,
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
@@ -234,6 +235,13 @@ STRATEGY_FACTORIES = [
         top_k=5,
         time_predict=1,
     ).apply_product_config(_get_config_655()),
+    lambda df: InverseHybridStrategy(
+        proposer=LongAbsenceStrategy(df, time_predict=1, top_n=15).apply_product_config(_get_config_655()),
+        steiner=SteinerStrategy(df, time_predict=1, lookback_days=180).apply_product_config(_get_config_655()),
+        top_k=15,
+        coverage=3,
+        time_predict=1,
+    ).apply_product_config(_get_config_655()),
 ]
 
 STRATEGY_NAMES = [
@@ -248,6 +256,7 @@ STRATEGY_NAMES = [
     "MarkovChainStrategy",
     "SteinerStrategy",
     "HybridStrategy",
+    "InverseHybridStrategy",
 ]
 
 
@@ -361,3 +370,284 @@ def test_6_45_no_special(df):
     model.evaluate()
     # 40 draws * 1 call * 1 (no special) = 40 predictions
     assert len(model.df_backtest_evaluate) == 40 * 1
+
+
+# ---------------------------------------------------------------------------
+# propose_top_numbers (newly added base capability)
+# ---------------------------------------------------------------------------
+
+
+class TestProposeTopNumbers:
+    """All voter strategies must expose ``propose_top_numbers(target_date, k)``."""
+
+    def test_random_deterministic_seed(self, df):
+        model = RandomModel(df, time_predict=1)
+        target = df["date"].max() + timedelta(days=3)
+        first = model.propose_top_numbers(target, 10)
+        second = model.propose_top_numbers(target, 10)
+        assert first == second, "RandomModel propose_top_numbers must be deterministic per date"
+        assert len(first) == 10
+        assert len(set(first)) == 10, "Numbers must be distinct"
+
+    def test_long_absence_returns_overdue(self, df):
+        model = LongAbsenceStrategy(df, time_predict=1, top_n=10)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 10)
+        assert len(pool) == 10
+        assert len(set(pool)) == 10
+        # All within the valid range
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_hot_returns_distinct_in_range(self, df):
+        model = HotNumbersStrategy(df, time_predict=1, lookback_days=90)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        assert len(set(pool)) == 15
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_cold_returns_distinct_in_range(self, df):
+        model = ColdNumbersStrategy(df, time_predict=1, lookback_days=90)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        assert len(set(pool)) == 15
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_not_repeat_skips_recent(self, df):
+        model = NotRepeatStrategy(df, time_predict=1, lookback_days=14)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        # All within the valid range
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_pattern_proportional_buckets(self, df):
+        model = PatternStrategy(df, time_predict=1, lookback_days=90, pattern_weight=0.6)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_exponential_decay_hot(self, df):
+        model = ExponentialDecayStrategy(df, time_predict=1, half_life_days=30, hot=True)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_pair_frequency_proposes(self, df):
+        model = PairFrequencyStrategy(df, time_predict=1, lookback_days=90)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_markov_proposes(self, df):
+        model = MarkovChainStrategy(df, time_predict=1, lookback_days=90)
+        target = df["date"].max() + timedelta(days=3)
+        pool = model.propose_top_numbers(target, 15)
+        assert len(pool) == 15
+        assert all(model.min_val <= n <= model.max_val for n in pool)
+
+    def test_returns_sorted(self, df):
+        """All propose_top_numbers implementations must return a sorted list."""
+        target = df["date"].max() + timedelta(days=3)
+        for factory in [
+            lambda d: RandomModel(d, time_predict=1),
+            lambda d: LongAbsenceStrategy(d, time_predict=1, top_n=10),
+            lambda d: HotNumbersStrategy(d, time_predict=1, lookback_days=90),
+            lambda d: ColdNumbersStrategy(d, time_predict=1, lookback_days=90),
+            lambda d: NotRepeatStrategy(d, time_predict=1, lookback_days=14),
+            lambda d: ExponentialDecayStrategy(d, time_predict=1, half_life_days=30),
+            lambda d: PairFrequencyStrategy(d, time_predict=1, lookback_days=90),
+            lambda d: MarkovChainStrategy(d, time_predict=1, lookback_days=90),
+        ]:
+            pool = factory(df).propose_top_numbers(target, 12)
+            assert pool == sorted(pool), (
+                f"{factory.__name__ if hasattr(factory, '__name__') else factory} returned unsorted pool"
+            )
+
+
+# ---------------------------------------------------------------------------
+# SteinerStrategy.predict_from_pool (new method for inverse hybrid)
+# ---------------------------------------------------------------------------
+
+
+class TestSteinerPredictFromPool:
+    def test_returns_numbers_from_pool(self, df):
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        target = df["date"].max() + timedelta(days=3)
+        pool = list(range(1, 16))  # 1..15
+        pred = steiner.predict_from_pool(target, pool, coverage=3)
+        assert len(pred) == steiner.number_predict
+        # All predictions must be drawn from the pool
+        assert all(n in pool for n in pred), f"Prediction {pred} not all in pool {pool}"
+        # Distinct
+        assert len(set(pred)) == steiner.number_predict
+        # Sorted
+        assert pred == sorted(pred)
+
+    def test_coverage_1_works(self, df):
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        target = df["date"].max() + timedelta(days=3)
+        pred = steiner.predict_from_pool(target, list(range(1, 16)), coverage=1)
+        assert len(pred) == steiner.number_predict
+        assert all(n in range(1, 16) for n in pred)
+
+    def test_coverage_5_works(self, df):
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        target = df["date"].max() + timedelta(days=3)
+        pred = steiner.predict_from_pool(target, list(range(1, 16)), coverage=5)
+        assert len(pred) == steiner.number_predict
+        assert all(n in range(1, 16) for n in pred)
+
+    def test_small_pool_padding(self, df):
+        """Pool smaller than number_predict should pad from the full range."""
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        target = df["date"].max() + timedelta(days=3)
+        # Pool has only 3 numbers; expect padding to number_predict
+        pred = steiner.predict_from_pool(target, [10, 20, 30], coverage=3)
+        assert len(pred) == steiner.number_predict
+        assert all(steiner.min_val <= n <= steiner.max_val for n in pred)
+
+    def test_unsorted_pool_is_handled(self, df):
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        target = df["date"].max() + timedelta(days=3)
+        pool = [55, 1, 23, 7, 42, 11, 33, 5, 19, 28, 14, 50, 2, 39, 17]
+        pred = steiner.predict_from_pool(target, pool, coverage=3)
+        assert all(n in pool for n in pred)
+
+    @pytest.mark.parametrize("np_value", [3, 4, 5, 6])
+    def test_number_predict_via_explicit_arg(self, df, np_value):
+        """predict_from_pool honours an explicit number_predict override.
+
+        The standalone Steiner is constructed with default
+        ``number_predict=6``, but the caller may pass an explicit value
+        (used by ``InverseHybridStrategy`` for non-6/55 products).
+        """
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        target = df["date"].max() + timedelta(days=3)
+        pool = list(range(1, 16))  # 1..15
+        pred = steiner.predict_from_pool(target, pool, coverage=3, number_predict=np_value)
+        assert len(pred) == np_value, f"Expected {np_value} numbers, got {len(pred)}: {pred}"
+        assert all(n in pool for n in pred)
+        assert len(set(pred)) == np_value
+        assert pred == sorted(pred)
+
+    @pytest.mark.parametrize("np_value", [3, 4, 5, 6])
+    def test_decompose_into_units(self, np_value):
+        """Static helper matches the documented mapping."""
+        from machine_learning.strategies.steiner import SteinerStrategy as St
+
+        units = St._decompose_into_units(np_value)
+        assert sum(units) == np_value
+        assert all(u in (1, 2, 3) for u in units)
+        # Specific documented cases
+        mapping = {3: [3], 4: [3, 1], 5: [3, 2], 6: [3, 3]}
+        if np_value in mapping:
+            assert units == mapping[np_value]
+
+    def test_5_35_returns_exactly_5_numbers(self, df):
+        """Regression: InverseHybridStrategy on 5/35 must return exactly 5.
+
+        Before the fix, ``SteinerStrategy.predict_from_pool`` always
+        built 2 disjoint triples (6 numbers) and the result was sliced
+        to 5, which actually returned 6 because the slice was applied
+        to a tuple cast that kept the original length.  This test
+        guards the bug.
+        """
+        config = _get_config_535()
+        steiner = SteinerStrategy(
+            df, time_predict=1, min_val=config.min_value, max_val=config.max_value, lookback_days=180
+        )
+        target = df["date"].max() + timedelta(days=3)
+        pool = list(range(1, 16))  # 1..15
+        # Standalone steiner has default number_predict=6
+        assert steiner.number_predict == 6
+        # But the override must give 5
+        pred = steiner.predict_from_pool(target, pool, coverage=3, number_predict=5)
+        assert len(pred) == 5, f"5/35: expected 5 numbers, got {len(pred)}: {pred}"
+        assert all(1 <= n <= 15 for n in pred)
+
+    def test_5_35_via_inverse_hybrid(self, df):
+        """End-to-end: InverseHybridStrategy on 5/35 returns 5 numbers per ticket."""
+        config = _get_config_535()
+        proposer = LongAbsenceStrategy(df, time_predict=1, min_val=config.min_value, max_val=config.max_value, top_n=15)
+        steiner = SteinerStrategy(
+            df, time_predict=1, min_val=config.min_value, max_val=config.max_value, lookback_days=180
+        )
+        model = InverseHybridStrategy(
+            proposer=proposer, steiner=steiner, top_k=15, coverage=3, time_predict=1
+        ).apply_product_config(config)
+        target = df["date"].max() + timedelta(days=3)
+        for _ in range(5):
+            pred = model.predict(target)
+            assert len(pred) == 5, f"5/35 hybrid: expected 5 numbers, got {len(pred)}: {pred}"
+            assert all(1 <= n <= 35 for n in pred)
+
+
+# ---------------------------------------------------------------------------
+# InverseHybridStrategy
+# ---------------------------------------------------------------------------
+
+
+class TestInverseHybridStrategy:
+    def _build(self, df, proposer=None, coverage=3):
+        if proposer is None:
+            proposer = LongAbsenceStrategy(df, time_predict=1, top_n=15)
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        return InverseHybridStrategy(proposer=proposer, steiner=steiner, top_k=15, coverage=coverage, time_predict=1)
+
+    def test_predict_uses_proposer_pool(self, df):
+        model = self._build(df, proposer=HotNumbersStrategy(df, time_predict=1, lookback_days=90))
+        target = df["date"].max() + timedelta(days=3)
+        pred = model.predict(target)
+        _assert_valid_prediction(pred, model)
+        # Steiner must pick from the proposer's pool of 15 numbers
+        pool = set(model.proposer.propose_top_numbers(target, 15))
+        assert set(pred).issubset(pool), f"Prediction {pred} not subset of pool {pool}"
+
+    def test_different_proposers_give_different_pools(self, df):
+        """Two different proposers should produce two different candidate pools."""
+        target = df["date"].max() + timedelta(days=3)
+        pool_a = set(HotNumbersStrategy(df, time_predict=1, lookback_days=90).propose_top_numbers(target, 15))
+        pool_b = set(LongAbsenceStrategy(df, time_predict=1, top_n=15).propose_top_numbers(target, 15))
+        # Sanity: pools should overlap but not be identical (proposers are different signals)
+        assert pool_a != pool_b, "Hot and LongAbsence proposers should differ on at least one number"
+
+    def test_backtest_pipeline(self, df):
+        model = self._build(df)
+        model.backtest()
+        model.evaluate()
+        cost, gain, profit = model.revenue()
+        assert cost > 0
+        assert gain >= 0
+        assert profit == gain - cost
+        assert model.df_backtest_evaluate is not None
+        assert not model.df_backtest_evaluate.empty
+
+    def test_ticket_count_per_draw(self, df):
+        """time_predict=1 should produce 1 prediction row per draw."""
+        model = self._build(df)
+        model.backtest()
+        model.evaluate()
+        # 40 draws * 1 time_predict = 40 rows
+        assert len(model.df_backtest_evaluate) == 40
+
+    def test_coverage_param_accepted(self, df):
+        model_a = self._build(df, coverage=1)
+        model_b = self._build(df, coverage=5)
+        target = df["date"].max() + timedelta(days=3)
+        # Both should produce valid predictions
+        _assert_valid_prediction(model_a.predict(target), model_a)
+        _assert_valid_prediction(model_b.predict(target), model_b)
+
+    def test_inherits_proposer_pricing(self, df):
+        """InverseHybrid should mirror proposer's ticket_price / prices."""
+        proposer = PairFrequencyStrategy(df, time_predict=1, lookback_days=180)
+        model = self._build(df, proposer=proposer)
+        assert model.ticket_price == proposer.ticket_price
+        assert model.number_predict == proposer.number_predict
+        assert model.min_val == proposer.min_val
+        assert model.max_val == proposer.max_val
