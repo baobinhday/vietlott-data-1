@@ -253,6 +253,11 @@ class PipelineStrategy(PredictModel):
         Deduplicates results so no two tickets are identical.  If fewer
         than ``ticket_count`` distinct tickets can be produced, logs a
         warning and returns whatever was generated.
+
+        The desired ``ticket_count`` is also passed to every chain step
+        as ``coverage`` so deterministic strategies (e.g. Steiner) can
+        pre-build enough ranked candidate tickets to satisfy the
+        request.
         """
         count = ticket_count if ticket_count is not None else self.ticket_count
         seen: set = set()
@@ -261,7 +266,7 @@ class PipelineStrategy(PredictModel):
         max_attempts = max(count * 10, 100)
 
         while len(tickets) < count and attempts < max_attempts:
-            ticket = self._generate_one_ticket(target_date)
+            ticket = self._generate_one_ticket(target_date, coverage=count)
             key = tuple(ticket)
             if key not in seen:
                 seen.add(key)
@@ -270,7 +275,9 @@ class PipelineStrategy(PredictModel):
 
         if len(tickets) < count:
             logger.warning(
-                "generate_tickets: requested {} distinct tickets for {}, only produced {} after {} attempts",
+                "generate_tickets: requested {} distinct tickets for {}, only produced {} after {} attempts. "
+                "The chain's structural strategies (e.g. Steiner) may be limited by the candidate pool size "
+                "or the (t, k, v) parameters — try larger pool_size or more permissive t/k.",
                 count,
                 target_date,
                 len(tickets),
@@ -347,13 +354,17 @@ class PipelineStrategy(PredictModel):
             self._strategy_cache[key] = strat
         return self._strategy_cache[key]
 
-    def _run_chain(self, group_spec: dict, group_idx: int, target_date: date) -> List[int]:
+    def _run_chain(self, group_spec: dict, group_idx: int, target_date: date, coverage: int = 1) -> List[int]:
         """Execute the strategy chain for one group and return
         ``pick_count`` numbers.
 
         Each step may carry an explicit ``pool_size`` (int ≥ 1) to control
         the size of the filtered pool at that point.  When absent / ``None``
         the step runs in "auto" mode using the strategy's natural output.
+
+        ``coverage`` is forwarded to ``filter_pool`` so deterministic
+        strategies (e.g. Steiner) can pre-build enough ranked candidate
+        tickets to satisfy the pipeline's overall ``ticket_count``.
 
         Parameters
         ----------
@@ -363,6 +374,9 @@ class PipelineStrategy(PredictModel):
             Index of the group (for caching).
         target_date:
             Draw date to predict for.
+        coverage:
+            Desired number of distinct tickets downstream callers want.
+            Used by the second-and-later chain steps' ``filter_pool``.
 
         Returns
         -------
@@ -397,7 +411,7 @@ class PipelineStrategy(PredictModel):
                     # from the pool, but never inflate the pool.
                     k = min(len(pool), self.number_predict)
 
-                filtered = list(strategy.filter_pool(target_date, list(pool), k))
+                filtered = list(strategy.filter_pool(target_date, list(pool), k, coverage=coverage))
 
                 if not filtered:
                     logger.warning(
@@ -415,12 +429,17 @@ class PipelineStrategy(PredictModel):
             return sorted(set(pool))
         return sorted(random.sample(pool, pick_count))
 
-    def _generate_one_ticket(self, target_date: date) -> List[int]:
+    def _generate_one_ticket(self, target_date: date, coverage: int = 1) -> List[int]:
         """Generate a single ticket by assembling group picks and applying
-        post-filters.  Retries up to ``_MAX_RETRIES`` times if filters fail."""
+        post-filters.  Retries up to ``_MAX_RETRIES`` times if filters fail.
+
+        ``coverage`` is forwarded to the chain so deterministic strategies
+        can pre-build enough ranked candidates for the requested ticket
+        count.
+        """
         ticket: List[int] = []
         for attempt in range(1, _MAX_RETRIES + 1):
-            ticket = self._build_ticket(target_date)
+            ticket = self._build_ticket(target_date, coverage=coverage)
             if self._passes_filters(ticket):
                 return ticket
             if attempt == _MAX_RETRIES:
@@ -433,18 +452,22 @@ class PipelineStrategy(PredictModel):
                 return ticket
         return ticket
 
-    def _build_ticket(self, target_date: date) -> List[int]:
+    def _build_ticket(self, target_date: date, coverage: int = 1) -> List[int]:
         """Assemble numbers from all groups by running each group's strategy
         chain, ensuring no overlap across groups.
 
         When the chain output has fewer candidates than needed, numbers are
         padded from the full range.  Otherwise, numbers are randomly sampled
-        to give variety across different invocations.
+        to give variety across multiple calls.
+
+        ``coverage`` is forwarded to each group's chain so deterministic
+        strategies can pre-build enough ranked candidates for the
+        requested ticket count.
         """
         selected: set = set()
 
         for group_idx, g in enumerate(self.groups):
-            chain_result = self._run_chain(g, group_idx, target_date)
+            chain_result = self._run_chain(g, group_idx, target_date, coverage=coverage)
             pick_count = g["pick_count"]
 
             # Filter out already-selected numbers.
