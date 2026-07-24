@@ -186,9 +186,16 @@ _register(
 _register(
     "steiner",
     "Steiner Triple",
-    "Decomposes the number range into pair-disjoint triples (partial Steiner triple system) and selects numbers via pair co-occurrence.",
+    "Decomposes the number range into pair-disjoint k-blocks (partial Steiner system S(t, k, v)) and selects numbers via pair co-occurrence. Defaults are S(2,3,35/45/55) per Vietlott product.",
     [
         ParamDef("lookback_days", "int", 365, 7, 1825, "Only use draws from this many days for pair co-occurrence"),
+        ParamDef(
+            "t", "int", 2, 1, 3, "Steiner strength — size of sub-tuple covered by at most one block (default 2 = pair)"
+        ),
+        ParamDef("k", "int", 3, 2, 10, "Steiner block size — elements per block (default 3 = triple)"),
+        ParamDef(
+            "v", "int", 0, 7, 999, "Steiner num points — pool size of the design (0 = use max_value of the product)"
+        ),
     ],
     SteinerStrategy,
 )
@@ -259,12 +266,69 @@ def list_strategies() -> List[dict]:
     return result
 
 
+def _coerce_param(value: Any, declared_type: str) -> Any:
+    """Coerce a JSON-deserialised value to the parameter's declared type.
+
+    JSON only carries ``str``/``float``/``bool``/``None``/``list``/``dict``
+    (no ``int`` distinction).  This helper converts the obvious cases so
+    strategies that declare ``ParamDef(type="int", …)`` receive a real
+    integer even when the API client serialised it as a string.
+
+    ``None`` and already-correctly-typed values pass through unchanged.
+    Conversion failures re-raise as :class:`ValueError` with a clear
+    message naming the bad value.
+    """
+    if value is None or declared_type == "str":
+        return value
+    if declared_type == "int":
+        if isinstance(value, bool):
+            # ``bool`` is a subclass of ``int``; reject explicitly.
+            raise ValueError(f"Expected int, got bool: {value!r}")
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError as e:
+                raise ValueError(f"Cannot coerce {value!r} to int") from e
+        if isinstance(value, float):
+            return int(value)
+        raise ValueError(f"Cannot coerce {type(value).__name__} to int")
+    if declared_type == "float":
+        if isinstance(value, bool):
+            raise ValueError(f"Expected float, got bool: {value!r}")
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError as e:
+                raise ValueError(f"Cannot coerce {value!r} to float") from e
+        raise ValueError(f"Cannot coerce {type(value).__name__} to float")
+    if declared_type == "bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            low = value.strip().lower()
+            if low in ("true", "1", "yes"):
+                return True
+            if low in ("false", "0", "no"):
+                return False
+            raise ValueError(f"Cannot coerce {value!r} to bool")
+        if isinstance(value, (int, float)):
+            return bool(value)
+        raise ValueError(f"Cannot coerce {type(value).__name__} to bool")
+    return value
+
+
 def instantiate(key: str, df: pd.DataFrame, **params) -> PredictModel:
     """Construct a strategy instance by registry *key*.
 
     Parameters not provided will use their default values from the registry
-    metadata.  Extra keyword arguments are forwarded to the strategy
-    constructor unchanged.
+    metadata.  Values are coerced to the declared ``ParamDef.type`` so
+    JSON clients can pass ``"t": "5"`` instead of ``"t": 5``.  Extra
+    keyword arguments are forwarded to the strategy constructor
+    unchanged.
     """
     cls = get_strategy_class(key)
     sd = _REGISTRY[key]
@@ -272,14 +336,18 @@ def instantiate(key: str, df: pd.DataFrame, **params) -> PredictModel:
     kwargs: dict = {}
     for p in sd.params:
         if p.name in params:
-            kwargs[p.name] = params[p.name]
+            kwargs[p.name] = _coerce_param(params[p.name], p.type)
         elif p.default is not None:
-            kwargs[p.name] = p.default
+            kwargs[p.name] = _coerce_param(p.default, p.type)
 
-    # Include any extra params not in the registry (e.g. time_predict)
+    # Include any extra params not in the registry (e.g. time_predict);
+    # coerce those too when a matching ParamDef exists, otherwise pass
+    # the value through.
+    declared_names = {p.name for p in sd.params}
     for k, v in params.items():
-        if k not in kwargs:
-            kwargs[k] = v
+        if k in kwargs or k in declared_names:
+            continue
+        kwargs[k] = v
 
     return cls(df, **kwargs)
 
