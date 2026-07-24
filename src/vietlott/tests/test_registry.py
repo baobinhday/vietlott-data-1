@@ -339,3 +339,78 @@ class TestRegistryIntegrity:
                     f"{s['key']}.{p['name']}: unexpected type '{p['type']}'"
                 )
         print("OK: all param types are valid")
+
+
+# ---------------------------------------------------------------------------
+# Type coercion (JSON strings → declared ParamDef types)
+# ---------------------------------------------------------------------------
+
+
+class TestInstantiateTypeCoercion:
+    """``instantiate`` must coerce string params to their declared types.
+
+    This is needed because JSON clients (and the existing FastAPI handler)
+    serialise everything as strings/numbers, but the strategy constructors
+    expect strict types.  Regression for the bug where sending
+    ``"t": "5"`` from the UI crashed with
+    ``TypeError: '<' not supported between instances of 'str' and 'int'``.
+    """
+
+    def test_int_param_from_string(self, df):
+        from machine_learning.strategies.registry import instantiate
+
+        # lookback_days is declared as int; pass a string.
+        m = instantiate("steiner", df, lookback_days="365")
+        assert isinstance(m.lookback_days, int)
+        assert m.lookback_days == 365
+
+    def test_int_param_from_float(self, df):
+        from machine_learning.strategies.registry import instantiate
+
+        m = instantiate("steiner", df, lookback_days=365.0)
+        assert isinstance(m.lookback_days, int)
+        assert m.lookback_days == 365
+
+    def test_steiner_t_k_v_from_strings(self, df):
+        """The exact payload that triggered the original TypeError."""
+        from machine_learning.strategies.registry import instantiate
+
+        m = instantiate(
+            "steiner",
+            df,
+            lookback_days="365",
+            t="2",
+            k="3",
+            v="55",
+        )
+        assert m.t == 2
+        assert m.k == 3
+        assert m.v == 55
+        assert all(isinstance(x, int) for x in (m.t, m.k, m.v))
+
+    def test_float_param_from_string(self, df):
+        from machine_learning.strategies.registry import instantiate
+
+        m = instantiate("frequency", df, lookback_days=90, selection_weight="0.7")
+        assert isinstance(m.selection_weight, float)
+        assert m.selection_weight == 0.7
+
+    def test_int_param_bad_string_raises(self, df):
+        from machine_learning.strategies.registry import instantiate
+
+        with pytest.raises(ValueError, match="Cannot coerce"):
+            instantiate("steiner", df, lookback_days="not-a-number")
+
+    def test_int_param_bool_rejected(self, df):
+        """A JSON ``true`` is a bool in Python; explicit int field should reject it."""
+        from machine_learning.strategies.registry import instantiate
+
+        with pytest.raises(ValueError, match="Expected int, got bool"):
+            instantiate("steiner", df, lookback_days=True)
+
+    def test_str_param_passes_through(self, df):
+        from machine_learning.strategies.registry import instantiate
+
+        m = instantiate("frequency", df, lookback_days=90, strategy_type="hot")
+        assert m.strategy_type == "hot"
+        assert isinstance(m.strategy_type, str)
