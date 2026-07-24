@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+from typing import Optional, Tuple
 
 import attr
 
@@ -27,6 +28,9 @@ class ProductConfig:
     use_cookies: bool = True
     default_index_to: int = 1
     page_size: int = 6
+    # Steiner system S(t, k, v) — (strength, block_size, num_points).
+    # ``None`` means the strategy auto-derives ``(2, 3, max_value)``.
+    steiner_system: Optional[Tuple[int, int, int]] = None
 
 
 power655_config = ProductConfig(
@@ -42,6 +46,7 @@ power655_config = ProductConfig(
     special_min=1,
     special_max=55,
     use_cookies=False,
+    steiner_system=(2, 3, 55),
 )
 power645_config = ProductConfig(
     name="power_645",
@@ -51,6 +56,7 @@ power645_config = ProductConfig(
     size_output=6,
     interval=timedelta(days=2),
     use_cookies=False,
+    steiner_system=(2, 3, 45),
 )
 power535_config = ProductConfig(
     name="power_535",
@@ -66,6 +72,7 @@ power535_config = ProductConfig(
     special_max=12,
     special_count=12,
     use_cookies=False,
+    steiner_system=(2, 3, 35),
 )
 keno_config = ProductConfig(
     name="keno",
