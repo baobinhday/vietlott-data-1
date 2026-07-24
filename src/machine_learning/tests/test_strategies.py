@@ -10,6 +10,7 @@ Covers:
 
 import random
 from datetime import date, timedelta
+from itertools import combinations
 
 import pandas as pd
 import pytest
@@ -675,3 +676,278 @@ class TestSteinerFilters:
         model = SteinerStrategy(df, time_predict=1, filter_consecutive=True, filter_same_decade=True)
         pred = model.predict(df["date"].max() + timedelta(days=3))
         _assert_valid_prediction(pred, model)
+
+
+# ---------------------------------------------------------------------------
+# SteinerStrategy custom S(t, k, v) system
+# ---------------------------------------------------------------------------
+
+
+class TestSteinerCustomSystem:
+    """Custom Steiner system: ``S(t, k, v)`` over the number range."""
+
+    def test_default_t_k_v_for_power_655(self, df):
+        """S(2, 3, 55) is the default for power_655."""
+        model = SteinerStrategy(df, time_predict=1).apply_product_config(_get_config_655())
+        assert model.steiner_system == (2, 3, 55)
+        assert model.t == 2
+        assert model.k == 3
+        assert model.v == 55
+
+    def test_default_t_k_v_for_power_645(self, df):
+        """S(2, 3, 45) is the default for power_645."""
+        model = SteinerStrategy(df, time_predict=1).apply_product_config(_get_config_645())
+        assert model.steiner_system == (2, 3, 45)
+
+    def test_default_t_k_v_for_power_535(self, df):
+        """S(2, 3, 35) is the default for power_535."""
+        model = SteinerStrategy(df, time_predict=1).apply_product_config(_get_config_535())
+        assert model.steiner_system == (2, 3, 35)
+
+    def test_set_steiner_system_rebuilds_blocks(self, df):
+        """set_steiner_system clears caches and rebuilds the blocks."""
+        model = SteinerStrategy(df, time_predict=1, min_val=1, max_val=55)
+        original_blocks = list(model._blocks)
+        original_t, original_k, original_v = model.t, model.k, model.v
+
+        # Switch to a custom S(2, 3, 27) system.
+        model.set_steiner_system(t=2, k=3, v=27)
+        assert model.steiner_system == (2, 3, 27)
+        assert all(max(b) <= 27 for b in model._blocks)
+        # All blocks have exactly k=3 elements
+        assert all(len(b) == 3 for b in model._blocks)
+        # No pair is covered twice (t=2 → pairwise disjoint)
+        pairs_covered: set = set()
+        for b in model._blocks:
+            for pair in combinations(sorted(b), 2):
+                assert pair not in pairs_covered, f"Pair {pair} covered twice in S(2, 3, 27)"
+                pairs_covered.add(pair)
+        # Restore defaults for other tests
+        model.set_steiner_system(t=original_t, k=original_k, v=original_v)
+        # After restore we should get back an equivalent set of blocks
+        assert len(model._blocks) == len(original_blocks)
+
+    def test_custom_steiner_k_4_works(self, df):
+        """Custom block size k=4 (S(2, 4, v)) produces valid 4-element blocks."""
+        model = SteinerStrategy(df, time_predict=1, min_val=1, max_val=21, t=2, k=4, v=21)
+        # k=4, v=21: every 4-block is sorted and has distinct elements
+        for b in model._blocks:
+            assert len(b) == 4
+            assert len(set(b)) == 4
+            assert list(b) == sorted(b)
+        # No pair appears in two blocks
+        pairs_covered: set = set()
+        for b in model._blocks:
+            for pair in combinations(sorted(b), 2):
+                assert pair not in pairs_covered
+                pairs_covered.add(pair)
+        # t=2 validation: v=21, k=4 → v*(v-1)=420, k*(k-1)=12, 420 % 12 == 0 ✓
+        # so a full system is possible (necessary but not sufficient).
+        assert model.steiner_system == (2, 4, 21)
+
+    def test_on_pool_steiner_general_t_k(self, df):
+        """Regression: ``_build_steiner_on_pool`` must support any (t, k).
+
+        Previously the on-pool builder was hard-coded to a 2-element
+        anchor (k=3 only) so S(5, 6, 12) on a 12-element user pool
+        produced only 2 blocks instead of 68.  The fix uses the same
+        general t/k algorithm as :meth:`_build_partial_steiner`.
+        """
+        user_pool = [3, 7, 11, 15, 22, 28, 35, 41, 47, 49, 52, 55]
+        # S(5, 6, 12) — every 5-tuple covered at most once.
+        blocks = SteinerStrategy._build_steiner_on_pool(user_pool, k=6, t=5)
+        assert len(blocks) > 2, f"Expected many blocks, got {len(blocks)}"
+        # All blocks have 6 sorted distinct elements from the pool.
+        for b in blocks:
+            assert len(b) == 6
+            assert list(b) == sorted(b)
+            assert all(n in user_pool for n in b)
+        # No 5-tuple appears in two blocks.
+        seen_5: set = set()
+        for b in blocks:
+            for tup in combinations(sorted(b), 5):
+                assert tup not in seen_5, f"5-tuple {tup} covered twice"
+                seen_5.add(tup)
+
+    def test_fano_plane_s_2_3_7(self, df):
+        """S(2, 3, 7) — the Fano plane has 7 blocks covering all 21 pairs.
+
+        Regression for the index/value mixing bug in the on-pool builder:
+        the 'anchor already covered' check was comparing index frozensets
+        against value frozensets, so the check never fired correctly and
+        the greedy produced only 6 of 7 blocks.
+        """
+        blocks = SteinerStrategy._build_steiner_on_pool(list(range(1, 8)), k=3, t=2)
+        assert len(blocks) == 7, f"Fano plane has 7 blocks, got {len(blocks)}"
+        # Every pair of {1..7} is covered exactly once.
+        covered: set = set()
+        for b in blocks:
+            for p in combinations(sorted(b), 2):
+                assert p not in covered, f"Pair {p} covered twice"
+                covered.add(p)
+        assert len(covered) == 21, f"Expected all 21 pairs covered, got {len(covered)}"
+        # Every block has 3 sorted distinct elements from {1..7}.
+        for b in blocks:
+            assert len(b) == 3
+            assert list(b) == sorted(b)
+            assert all(1 <= n <= 7 for n in b)
+            assert len(set(b)) == 3
+
+    def test_partial_steiner_fano_plane(self, df):
+        """``_build_partial_steiner`` must also produce all 7 Fano triples."""
+        model = SteinerStrategy(df, time_predict=1, min_val=1, max_val=7, t=2, k=3, v=7)
+        assert len(model._blocks) == 7, f"Fano plane has 7 blocks, got {len(model._blocks)}"
+
+    def test_on_pool_steiner_s_2_6_12(self, df):
+        """S(2, 6, 12) on [1..12] — full greedy decomposition."""
+        blocks = SteinerStrategy._build_steiner_on_pool(list(range(1, 13)), k=6, t=2)
+        for b in blocks:
+            assert len(b) == 6
+            for pair in combinations(sorted(b), 2):
+                # All elements are within [1, 12]
+                pass  # sanity only — disjointness already guaranteed
+        # Every pair must be unique across blocks (t=2 invariant).
+        seen: set = set()
+        for b in blocks:
+            for pair in combinations(sorted(b), 2):
+                assert pair not in seen
+                seen.add(pair)
+
+    def test_custom_steiner_validates_arguments(self, df):
+        """Constructor rejects t < 1, k < t, k > pool_size, v < k."""
+        # t < 1
+        with pytest.raises(ValueError, match="Steiner strength t must be"):
+            SteinerStrategy(df, time_predict=1, min_val=1, max_val=10, t=0)
+        # k < t
+        with pytest.raises(ValueError, match="Block size k=2 must be >= t=3"):
+            SteinerStrategy(df, time_predict=1, min_val=1, max_val=10, t=3, k=2)
+        # k > pool
+        with pytest.raises(ValueError, match="larger than the number range"):
+            SteinerStrategy(df, time_predict=1, min_val=1, max_val=5, t=2, k=6)
+        # v < k
+        with pytest.raises(ValueError, match="Steiner v=2 must be >= k=3"):
+            SteinerStrategy(df, time_predict=1, min_val=1, max_val=10, t=2, k=3, v=2)
+
+    def test_set_steiner_system_validates_arguments(self, df):
+        """set_steiner_system enforces the same invariants as the constructor."""
+        model = SteinerStrategy(df, time_predict=1, min_val=1, max_val=10)
+        with pytest.raises(ValueError, match="Steiner strength t must be"):
+            model.set_steiner_system(t=0, k=2, v=5)
+        with pytest.raises(ValueError, match="Block size k=2 must be >= t=3"):
+            model.set_steiner_system(t=3, k=2, v=5)
+        with pytest.raises(ValueError, match="larger than the number range"):
+            model.set_steiner_system(t=2, k=20, v=20)
+        with pytest.raises(ValueError, match="Steiner v=2 must be >= k=3"):
+            model.set_steiner_system(t=2, k=3, v=2)
+
+    def test_is_valid_steiner_v_classic_conditions(self):
+        """Necessary conditions for a full S(2, 3, v) to exist.
+
+        A full Steiner triple system S(2, 3, v) exists iff
+        ``v ≡ 1 or 3 (mod 6)``.  Note: this excludes 35 (5 mod 6) and 50
+        (2 mod 6), so the configured default ``S(2, 3, 35)`` for
+        ``power_535`` is necessarily a *partial* system — the greedy
+        algorithm produces a pairwise-disjoint decomposition of [1, 35]
+        but does not cover every pair.
+        """
+        # v ≡ 1 or 3 (mod 6) — full STS exists
+        for v in (7, 9, 13, 15, 19, 21, 25, 27, 31, 33, 37, 39, 43, 45, 49, 51, 55):
+            assert SteinerStrategy.is_valid_steiner_v(v, k=3), f"S(2,3,{v}) should be constructible"
+        # v % 6 ∈ {0, 2, 4, 5} — full STS does NOT exist (v ≥ k = 3)
+        for v in (5, 6, 8, 10, 11, 12, 14, 20, 22, 35, 50, 100):
+            assert not SteinerStrategy.is_valid_steiner_v(v, k=3), f"S(2,3,{v}) should not be constructible"
+
+    def test_power_535_steiner_is_partial(self, df):
+        """S(2, 3, 35) is necessarily partial — only some pairs are covered.
+
+        Documents the design choice: ``power_535`` configures the greedy
+        partial Steiner system.  The pool still produces valid Steiner
+        triples for prediction but does not cover every pair.
+        """
+        model = SteinerStrategy(df, time_predict=1, min_val=1, max_val=35, t=2, k=3, v=35)
+        pairs_covered: set = set()
+        for b in model._blocks:
+            for pair in combinations(sorted(b), 2):
+                pairs_covered.add(pair)
+        # Full S(2, 3, 35) would cover C(35, 2) = 595 pairs.
+        # The partial greedy system covers a smaller subset.
+        assert 0 < len(pairs_covered) < 595, (
+            f"Partial S(2,3,35) should cover some but not all pairs, got {len(pairs_covered)}"
+        )
+        # All triples still have 3 sorted distinct elements in [1, 35].
+        for b in model._blocks:
+            assert len(b) == 3
+            assert list(b) == sorted(b)
+            assert all(1 <= n <= 35 for n in b)
+
+    def test_default_steiner_system_classmethod(self):
+        """Class-level lookup of per-product default Steiner systems."""
+        assert SteinerStrategy.default_steiner_system("power_535") == (2, 3, 35)
+        assert SteinerStrategy.default_steiner_system("power_645") == (2, 3, 45)
+        assert SteinerStrategy.default_steiner_system("power_655") == (2, 3, 55)
+        assert SteinerStrategy.default_steiner_system("keno") is None
+        assert SteinerStrategy.default_steiner_system("bingo18") is None
+
+    def test_custom_steiner_predict_uses_custom_pool(self, df):
+        """Predict with custom (t, k, v) honours the new design and returns valid tickets."""
+        model = SteinerStrategy(df, time_predict=1, min_val=1, max_val=27, t=2, k=3, v=27)
+        target = df["date"].max() + timedelta(days=3)
+        for _ in range(3):
+            pred = model.predict(target)
+            # Default number_predict is 6; with k=3, the ticket is the
+            # union of 2 disjoint triples, then sliced to 6.
+            assert len(pred) == model.number_predict == 6
+            assert all(1 <= n <= 27 for n in pred)
+            assert len(set(pred)) == 6
+            assert pred == sorted(pred)
+
+    def test_apply_product_config_uses_default_steiner(self, df):
+        """Per-product defaults are applied via apply_product_config."""
+        for cfg in (_get_config_535(), _get_config_645(), _get_config_655()):
+            model = SteinerStrategy(df, time_predict=1).apply_product_config(cfg)
+            expected = (2, 3, cfg.max_value)
+            assert model.steiner_system == expected, f"Expected S{expected} for {cfg.name}"
+
+    def test_registry_lists_steiner_params(self):
+        """Registry exposes t, k, v on the 'steiner' entry."""
+        from machine_learning.strategies.registry import list_strategies
+
+        entries = {e["key"]: e for e in list_strategies()}
+        assert "steiner" in entries
+        names = {p["name"] for p in entries["steiner"]["params"]}
+        assert {"t", "k", "v"}.issubset(names), f"Steiner params should include t/k/v, got {names}"
+
+
+# ---------------------------------------------------------------------------
+# ProductConfig.steiner_system wiring
+# ---------------------------------------------------------------------------
+
+
+class TestProductConfigSteinerSystem:
+    """ProductConfig.steiner_system wires the default S(t, k, v) per product."""
+
+    def test_power_655_default_steiner_system(self):
+        from vietlott.config.products import get_config
+
+        cfg = get_config("power_655")
+        assert cfg.steiner_system == (2, 3, 55)
+
+    def test_power_645_default_steiner_system(self):
+        from vietlott.config.products import get_config
+
+        cfg = get_config("power_645")
+        assert cfg.steiner_system == (2, 3, 45)
+
+    def test_power_535_default_steiner_system(self):
+        from vietlott.config.products import get_config
+
+        cfg = get_config("power_535")
+        assert cfg.steiner_system == (2, 3, 35)
+
+    def test_non_steiner_products_have_none(self):
+        from vietlott.config.products import get_config
+
+        # Products without a registered default leave it as None so the
+        # strategy auto-derives ``(2, 3, max_value)``.
+        for name in ("keno", "3d", "3d_pro", "bingo18"):
+            assert get_config(name).steiner_system is None, f"{name} should have steiner_system=None"

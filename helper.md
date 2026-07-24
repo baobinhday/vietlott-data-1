@@ -85,6 +85,54 @@ Base URL: `http://localhost:8000` (hoặc `http://localhost:5173` khi dev với 
 | POST | `/api/generate` | Sinh vé cho kỳ tiếp theo từ JSON pipeline |
 | POST | `/api/backtest` | Backtest pipeline trên khoảng ngày, trả về ROI + per-draw chart |
 
+### Custom Steiner system S(t, k, v)
+
+`SteinerStrategy` hỗ trợ hệ Steiner tùy ý ``S(t, k, v)``:
+
+* ``t`` — strength, kích thước sub-tuple mà mỗi block phủ (mặc định ``2`` = pair).
+* ``k`` — block size, số phần tử trong mỗi block (mặc định ``3`` = triple).
+* ``v`` — số điểm của design (mặc định = ``max_value`` của product).
+
+Default per-product trong `vietlott.config.products`:
+
+| Product | Hệ Steiner | Ghi chú |
+|---|---|---|
+| `power_535` | ``S(2, 3, 35)`` | partial — full STS không tồn tại vì 35 % 6 = 5 |
+| `power_645` | ``S(2, 3, 45)`` | full STS tồn tại (45 % 6 = 3) |
+| `power_655` | ``S(2, 3, 55)`` | full STS tồn tại (55 % 6 = 1) |
+| `keno` / `3d` / `3d_pro` / `bingo18` | ``None`` | tự suy ra ``(2, 3, max_value)`` |
+
+Có thể override trong JSON request:
+
+```json
+{
+  "strategy": "steiner",
+  "params": {
+    "lookback_days": 365,
+    "t": 2,
+    "k": 3,
+    "v": 45
+  }
+}
+```
+
+Hoặc trong Python:
+
+```python
+from machine_learning.strategies.steiner import SteinerStrategy
+
+m = SteinerStrategy(df, time_predict=1, t=2, k=3, v=45)
+# Hoặc đổi sau khi đã khởi tạo:
+m.set_steiner_system(t=2, k=4, v=21)
+```
+
+Kiểm tra một full Steiner system có thể tồn tại hay không:
+
+```python
+SteinerStrategy.is_valid_steiner_v(45, k=3)  # True — 45 % 6 == 3
+SteinerStrategy.is_valid_steiner_v(35, k=3)  # False — 35 % 6 == 5
+```
+
 ### Ví dụ: generate 3 vé Steiner+Frequency cho power_655
 
 ```bash
