@@ -200,6 +200,12 @@ class PredictModel:
         self.special_min = getattr(config, "special_min", 0)
         self.special_max = getattr(config, "special_max", 0)
         self.special_count = getattr(config, "special_count", 1)
+        # Steiner system (S(t, k, v)) — only SteinerStrategy consumes this.
+        # Setting the value here triggers an in-place rebuild of the
+        # Steiner blocks via :meth:`SteinerStrategy.set_steiner_system`.
+        steiner_system = getattr(config, "steiner_system", None)
+        if steiner_system is not None and hasattr(self, "set_steiner_system"):
+            self.set_steiner_system(*steiner_system)
         if hasattr(config, "name"):
             from vietlott.config.prizes import get_prize_fn
 
@@ -237,7 +243,7 @@ class PredictModel:
         del target_date  # unused in fallback
         return list(range(self.min_val, min(self.min_val + k, self.max_val + 1)))
 
-    def filter_pool(self, target_date, pool: List[int], k: int) -> List[int]:
+    def filter_pool(self, target_date, pool: List[int], k: int, coverage: int = 1) -> List[int]:
         """Filter a candidate pool to ``k`` numbers using this strategy.
 
         The default implementation calls ``predict(target_date, candidate_pool=pool)``
@@ -257,12 +263,19 @@ class PredictModel:
             Candidate pool of distinct numbers to pick from.
         k:
             Desired number of output numbers (max).
+        coverage:
+            How many distinct tickets the caller wants.  Most strategies
+            can ignore this and return a single deterministic result;
+            strategies that can produce multiple distinct picks
+            (e.g. Steiner) use it to pre-build a deeper ranked list
+            that successive calls can rotate through.
 
         Returns
         -------
         Sorted list of up to ``k`` numbers drawn from ``pool``.  May return
         fewer than ``k`` if the pool itself is smaller.
         """
+        del coverage  # unused in the default implementation
         if k >= len(pool):
             return sorted(set(pool))
         predicted = self.predict(target_date, candidate_pool=pool)
