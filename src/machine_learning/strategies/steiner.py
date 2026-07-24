@@ -1,14 +1,29 @@
 """
-Steiner triple system-based prediction strategy.
+Steiner system-based prediction strategy.
 
-Builds a partial Steiner triple system (pair-disjoint 3-subsets) over the
-number range and selects 6 numbers by finding two disjoint triples with
-the highest combined historical pair co-occurrence.
+Builds a partial Steiner system S(t, k, v) (t-wise-disjoint k-subsets) over
+the number range and selects ``number_predict`` numbers by combining the
+top-scoring structural units based on historical co-occurrence.
+
+Default systems per Vietlott product
+------------------------------------
+
+* ``power_535`` → S(2, 3, 35) — pick 5 numbers from pair-disjoint triples
+* ``power_645`` → S(2, 3, 45) — pick 6 numbers from pair-disjoint triples
+* ``power_655`` → S(2, 3, 55) — pick 6 numbers from pair-disjoint triples
+
+The ``(t, k, v)`` triple is fully customisable via constructor arguments
+or by setting ``steiner_system`` on the product's :class:`ProductConfig`.
+When ``t == 2`` and ``k == 3`` the strategy operates as a Steiner triple
+system (STS); other valid (t, k, v) combinations work via the same greedy
+algorithm and may be partial systems.
 """
 
+import math
+import random
 from datetime import date
 from itertools import combinations
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -17,12 +32,13 @@ from machine_learning.strategies.base import PredictModel
 
 class SteinerStrategy(PredictModel):
     """
-    Steiner triple system-based lottery prediction.
+    Steiner system-based lottery prediction.
 
-    Decomposes ``[min_val, max_val]`` into 3-element triples (a partial
-    Steiner system: every pair appears in at most one triple) and returns
-    6 numbers by selecting the two disjoint triples with the highest sum
-    of historical pair co-occurrence.
+    Decomposes ``[min_val, min_val + v - 1]`` into ``k``-element blocks
+    such that every ``t``-element sub-tuple appears in at most one block
+    (a partial Steiner system S(t, k, v)).  Returns ``number_predict``
+    numbers by greedily combining the top-scoring blocks ranked by
+    historical co-occurrence of their internal pairs.
 
     Parameters
     ----------
@@ -32,10 +48,35 @@ class SteinerStrategy(PredictModel):
         Number of tickets generated per draw during backtest.
     min_val, max_val:
         Inclusive number range.
+    t:
+        Strength of the Steiner system — the size of sub-tuple that must
+        be covered by at most one block.  ``2`` (default) means every
+        pair appears in at most one block.  Only ``t == 2`` is currently
+        used for ticket assembly, but the parameter is stored for
+        completeness and future extensions.
+    k:
+        Block size — the number of elements in each Steiner block.
+        ``3`` (default) gives a Steiner triple system.  Values up to
+        ``number_predict`` are supported.
+    v:
+        Number of points in the design.  Defaults to ``max_val``
+        (the pool size).  Must satisfy ``min_val + k <= v <= max_val``.
     lookback_days:
         Only use draws from the last ``lookback_days`` days for pair
         co-occurrence.  ``None`` to use all history.
+    filter_consecutive:
+        (k=3 only) Reject blocks containing adjacent consecutive numbers.
+    filter_same_decade:
+        (k=3 only) Reject blocks where all 3 numbers fall in the same decade.
     """
+
+    # Default Steiner system per product (consumed by ``apply_product_config``).
+    # Other products auto-derive S(2, 3, max_value) when no default is set.
+    DEFAULT_STEINER_SYSTEM: Dict[str, Tuple[int, int, int]] = {
+        "power_535": (2, 3, 35),
+        "power_645": (2, 3, 45),
+        "power_655": (2, 3, 55),
+    }
 
     def __init__(
         self,
@@ -46,16 +87,113 @@ class SteinerStrategy(PredictModel):
         lookback_days: Optional[int] = 365,
         filter_consecutive: bool = True,
         filter_same_decade: bool = True,
+        t: int = 2,
+        k: int = 3,
+        v: Optional[int] = None,
     ):
         super().__init__(df, time_predict, min_val, max_val)
+        if t < 1:
+            raise ValueError(f"Steiner strength t must be >= 1, got {t}")
+        if k < t:
+            raise ValueError(f"Block size k={k} must be >= t={t}")
+        pool_size = self.max_val - self.min_val + 1
+        if k > pool_size:
+            raise ValueError(f"Block size k={k} is larger than the number range ({pool_size})")
+
         self.lookback_days = lookback_days
         self.filter_consecutive = filter_consecutive
         self.filter_same_decade = filter_same_decade
-        self._triples: List[Tuple[int, int, int]] = self._build_partial_steiner()
+        self.t = t
+        self.k = k
+        # v defaults to the pool size; v <= 0 is treated as "use default".
+        # Must be a positive integer in [k, max_val].
+        self.v = v if (v is not None and v > 0) else self.max_val
+        if self.v < k:
+            raise ValueError(f"Steiner v={self.v} must be >= k={k}")
+        if self.v < self.min_val:
+            raise ValueError(f"Steiner v={self.v} must be >= min_val={self.min_val}")
+
+        self._blocks: List[Tuple[int, ...]] = self._build_partial_steiner()
         self.df_sorted: pd.DataFrame = df.sort_values("date").reset_index(drop=True)
         self._pair_freq_cache: Dict[date, Dict[Tuple[int, int], int]] = {}
-        self._top_pairs_cache: Dict[Tuple[date, int], List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]] = {}
+        self._top_tickets_cache: Dict[Tuple[date, int], List[List[int]]] = {}
         self._call_counter: int = 0
+
+    # ------------------------------------------------------------------
+    # Steiner system metadata
+    # ------------------------------------------------------------------
+
+    @property
+    def steiner_system(self) -> Tuple[int, int, int]:
+        """Return the ``(t, k, v)`` triple describing this strategy's Steiner system."""
+        return (self.t, self.k, self.v)
+
+    @classmethod
+    def default_steiner_system(cls, product_name: str) -> Optional[Tuple[int, int, int]]:
+        """Return the default ``(t, k, v)`` triple for a Vietlott product, if any.
+
+        ``None`` when no default is registered — callers should derive
+        ``v`` from the product's ``max_value`` and use ``(2, 3, v)``.
+        """
+        return cls.DEFAULT_STEINER_SYSTEM.get(product_name)
+
+    def set_steiner_system(self, t: int, k: int, v: Optional[int] = None) -> "SteinerStrategy":
+        """Reconfigure this instance with a new ``(t, k, v)`` Steiner system.
+
+        Rebuilds the Steiner blocks and clears all internal caches so
+        subsequent ``predict`` / ``predict_from_pool`` calls operate on
+        the new design.  Returns ``self`` for chaining — designed to be
+        called from :meth:`PredictModel.apply_product_config`.
+
+        Parameters
+        ----------
+        t:
+            Strength (>= 1).
+        k:
+            Block size (>= t).
+        v:
+            Number of points.  ``None`` keeps the current value.
+        """
+        if t < 1:
+            raise ValueError(f"Steiner strength t must be >= 1, got {t}")
+        if k < t:
+            raise ValueError(f"Block size k={k} must be >= t={t}")
+        pool_size = self.max_val - self.min_val + 1
+        if k > pool_size:
+            raise ValueError(f"Block size k={k} is larger than the number range ({pool_size})")
+        new_v = self.v if (v is None or v <= 0) else v
+        if new_v < k:
+            raise ValueError(f"Steiner v={new_v} must be >= k={k}")
+        if new_v < self.min_val:
+            raise ValueError(f"Steiner v={new_v} must be >= min_val={self.min_val}")
+
+        self.t = t
+        self.k = k
+        self.v = new_v
+        self._blocks = self._build_partial_steiner()
+        self._pair_freq_cache.clear()
+        self._top_tickets_cache.clear()
+        # Note: ``_call_counter`` is intentionally preserved so the
+        # existing ``predict()`` rotation continues from where it left
+        # off across product reconfigurations.
+        return self
+
+    @classmethod
+    def is_valid_steiner_v(cls, v: int, k: int = 3) -> bool:
+        """Check if a full S(2, k, v) Steiner system can exist.
+
+        For S(2, 3, v) a full Steiner triple system exists iff
+        ``v ≡ 1 or 3 (mod 6)``.  For other k the divisibility check is
+        ``v * (v - 1) % (k * (k - 1)) == 0`` and ``v - 1 % (k - 1) == 0``.
+
+        This is a necessary condition only — even when it holds, a full
+        Steiner system may not have a known explicit construction.
+        """
+        if k == 3:
+            return v % 6 in (1, 3)
+        if v < k:
+            return False
+        return (v * (v - 1)) % (k * (k - 1)) == 0 and (v - 1) % (k - 1) == 0
 
     @staticmethod
     def is_valid_triple(
@@ -82,34 +220,85 @@ class SteinerStrategy(PredictModel):
             return False
         return True
 
+    @staticmethod
+    def _is_valid_block(
+        block: Tuple[int, ...],
+        k: int,
+        filter_consecutive: bool,
+        filter_same_decade: bool,
+    ) -> bool:
+        """Apply structural filters to a ``k``-element block.
+
+        For ``k == 3`` the original triple-specific filters apply.  For
+        other ``k`` the block is accepted as long as its elements are
+        sorted and distinct.
+        """
+        if k == 3 and len(block) == 3:
+            return SteinerStrategy.is_valid_triple(
+                block, filter_consecutive=filter_consecutive, filter_same_decade=filter_same_decade
+            )
+        return len(set(block)) == len(block) == k
+
     # ------------------------------------------------------------------
-    # Partial Steiner triple system construction
+    # Partial Steiner system construction (works for any t, k, v)
     # ------------------------------------------------------------------
 
-    def _build_partial_steiner(self) -> List[Tuple[int, int, int]]:
-        """Greedy pair-disjoint triple decomposition of [min_val, max_val]."""
-        v = self.max_val - self.min_val + 1
-        triples: List[Tuple[int, int, int]] = []
-        covered: set = set()
+    def _build_partial_steiner(self) -> List[Tuple[int, ...]]:
+        """Greedy ``t``-wise-disjoint ``k``-block decomposition of ``v`` points.
 
-        for a in range(v):
-            for b in range(a + 1, v):
-                pair = (a, b)
-                if pair in covered:
+        The pool of points is ``[min_val, min_val + v - 1]``.  Every
+        produced block has exactly ``k`` elements and is stored in sorted
+        order so the algorithm is deterministic.
+
+        For ``t == 2`` this is the standard "pairwise-disjoint blocks"
+        construction used by the previous Steiner triple system code;
+        for ``t == 3`` the algorithm ensures no 3-tuple is covered twice.
+        """
+        v = self.v
+        k = self.k
+        t = self.t
+        rng = list(range(self.min_val, self.min_val + v))
+
+        blocks: List[Tuple[int, ...]] = []
+        covered: set = set()  # frozensets of t-tuples already covered
+
+        # Iterate over the lexicographically earliest uncovered t-tuple,
+        # then greedily pick the (k - t) smallest remaining points to
+        # form a block that doesn't re-cover any existing t-tuple.
+        for anchor in combinations(rng, t):
+            anchor_set = frozenset(anchor)
+            anchor_sorted = sorted(anchor)
+            anchor_val_set = frozenset(anchor_sorted)
+            if anchor_val_set in covered:
+                continue
+            # Pick the (k - t) smallest points in the pool not in the anchor.
+            extras: List[int] = []
+            for n in rng:
+                if n in anchor_set:
                     continue
-                # Find the smallest c > b that keeps (a,c), (b,c) uncovered
-                for c in range(b + 1, v):
-                    p1 = (a, c)
-                    p2 = (b, c)
-                    if p1 in covered or p2 in covered:
-                        continue
-                    triples.append((a + self.min_val, b + self.min_val, c + self.min_val))
-                    covered.add(pair)
-                    covered.add(p1)
-                    covered.add(p2)
+                # Accept n only if every t-tuple that includes n and t-1
+                # members of the partial block (anchor + already-picked
+                # extras) is currently uncovered.
+                conflict = False
+                block_vals = anchor_sorted + extras + [n]
+                for tup in combinations(block_vals, t):
+                    if frozenset(tup) in covered:
+                        conflict = True
+                        break
+                if conflict:
+                    continue
+                extras.append(n)
+                if len(extras) == k - t:
                     break
+            if len(extras) < k - t:
+                # No way to complete this anchor into a full block of size k.
+                continue
+            block = tuple(sorted(anchor_sorted + extras))
+            blocks.append(block)
+            for tup in combinations(block, t):
+                covered.add(frozenset(tup))
 
-        return triples
+        return blocks
 
     # ------------------------------------------------------------------
     # Pair co-occurrence
@@ -136,69 +325,92 @@ class SteinerStrategy(PredictModel):
         return freq
 
     @staticmethod
-    def _score_triple(triple: Tuple[int, int, int], freq: Dict[Tuple[int, int], int]) -> int:
-        a, b, c = sorted(triple)
-        return freq.get((a, b), 0) + freq.get((a, c), 0) + freq.get((b, c), 0)
+    def _score_block(block: Sequence[int], freq: Dict[Tuple[int, int], int]) -> int:
+        """Sum of pair-frequencies for all pairs in ``block``."""
+        score = 0
+        for a, b in combinations(sorted(block), 2):
+            score += freq.get((min(a, b), max(a, b)), 0)
+        return score
 
     # ------------------------------------------------------------------
-    # Top-K disjoint pairs of triples
+    # Top-K candidate tickets (each = up to number_predict numbers from disjoint blocks)
     # ------------------------------------------------------------------
 
-    def _top_disjoint_pairs(self, target_date: date, k: int) -> List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]:
-        """Return up to k disjoint (T1, T2) pairs ordered by combined score desc.
+    def _scored_blocks(self, target_date: date) -> List[Tuple[int, int, Tuple[int, ...]]]:
+        """Return all blocks (after structural filters) ranked by pair-score desc."""
+        freq = self._pair_freq(target_date)
+        if self.filter_consecutive or self.filter_same_decade:
+            blocks = [
+                b
+                for b in self._blocks
+                if self._is_valid_block(b, self.k, self.filter_consecutive, self.filter_same_decade)
+            ]
+        else:
+            blocks = list(self._blocks)
+        scored = [(self._score_block(b, freq), idx, b) for idx, b in enumerate(blocks)]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        return scored
 
-        Results are cached per (date, k) so multiple HybridStrategy wrappers
-        sharing one Steiner instance only pay the O(T²) cost once per date.
+    def _top_tickets(self, target_date: date, k: int) -> List[List[int]]:
+        """Return up to ``k`` candidate tickets ordered by combined Steiner score desc.
+
+        Each ticket is a union of :func:`_blocks_per_ticket` disjoint
+        Steiner blocks.  Cached per (date, k) so multiple hybrid wrappers
+        sharing one Steiner instance only pay the O(B²) cost once per date.
         """
         cache_key = (target_date, k)
-        if cache_key in self._top_pairs_cache:
-            return self._top_pairs_cache[cache_key]
+        if cache_key in self._top_tickets_cache:
+            return self._top_tickets_cache[cache_key]
 
-        freq = self._pair_freq(target_date)
-        triples = self._triples
-        if self.filter_consecutive or self.filter_same_decade:
-            triples = [t for t in triples if self.is_valid_triple(t, self.filter_consecutive, self.filter_same_decade)]
-
-        if not triples:
-            self._top_pairs_cache[cache_key] = []
+        scored = self._scored_blocks(target_date)
+        if not scored:
+            self._top_tickets_cache[cache_key] = []
             return []
 
-        scored = [(self._score_triple(t, freq), idx, t) for idx, t in enumerate(triples)]
-        # Sort by score desc; use index as tie-breaker for determinism
-        scored.sort(key=lambda x: (-x[0], x[1]))
-
-        # Greedy: pick the first triple, then the best disjoint partner for it
-        result: List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = []
-        for i, (_, _, t1) in enumerate(scored):
+        blocks_per_ticket = self._blocks_per_ticket()
+        result: List[List[int]] = []
+        seen: set = set()
+        for i, (_, _, b1) in enumerate(scored):
             if len(result) >= k:
                 break
-            set1 = set(t1)
-            best_partner: Optional[Tuple[int, int, int]] = None
-            best_partner_score = -1
-            for _, _, t2 in scored:
-                if t2 is t1 or set(t2) & set1:
+            ticket_nums: set = set(b1)
+            units_left = blocks_per_ticket - 1
+            for j, (_, _, b2) in enumerate(scored):
+                if units_left == 0:
+                    break
+                if j == i:
                     continue
-                s = self._score_triple(t2, freq)
-                if s > best_partner_score:
-                    best_partner_score = s
-                    best_partner = t2
-            if best_partner is None:
+                if set(b2) & ticket_nums:
+                    continue
+                ticket_nums |= set(b2)
+                units_left -= 1
+            ticket = sorted(ticket_nums)[: self.number_predict]
+            if len(ticket) != self.number_predict:
                 continue
-            result.append((t1, best_partner))
+            key = tuple(ticket)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(ticket)
 
-        self._top_pairs_cache[cache_key] = result
+        self._top_tickets_cache[cache_key] = result
         return result
+
+    def _blocks_per_ticket(self) -> int:
+        """Number of disjoint blocks needed to cover ``number_predict`` slots."""
+        if self.k <= 0:
+            return 1
+        return max(1, math.ceil(self.number_predict / self.k))
 
     def get_top_tickets(self, target_date: date, k: int) -> List[List[int]]:
         """
-        Return up to k candidate tickets ordered by combined Steiner pair-score desc.
+        Return up to ``k`` candidate tickets ordered by combined Steiner score desc.
 
-        Each ticket is the union of 2 disjoint Steiner triples.  Used by
-        :class:`~machine_learning.strategies.hybrid.HybridStrategy` to feed
-        Steiner-proposed candidates to other strategies for voting.
+        Each ticket is the union of :func:`_blocks_per_ticket` disjoint
+        Steiner blocks.  Used by :class:`~machine_learning.strategies.hybrid.HybridStrategy`
+        to feed Steiner-proposed candidates to other strategies for voting.
         """
-        pairs = self._top_disjoint_pairs(target_date, k=k)
-        return [sorted(set(t1) | set(t2)) for t1, t2 in pairs]
+        return self._top_tickets(target_date, k=k)
 
     def get_top_numbers(self, target_date: date, k: int = 15) -> List[int]:
         """
@@ -211,19 +423,18 @@ class SteinerStrategy(PredictModel):
         valid ticket) are always returned.
         """
         effective_k = max(k, self.number_predict)
-        # Take the top 3 disjoint pair tickets (18 numbers), slice to k unique
-        pairs = self._top_disjoint_pairs(target_date, k=max(3, (effective_k + 5) // 6))
+        tickets = self._top_tickets(target_date, k=max(3, (effective_k + self.k - 1) // self.k))
         seen: set = set()
         result: List[int] = []
-        for t1, t2 in pairs:
-            for n in set(t1) | set(t2):
+        for ticket in tickets:
+            for n in ticket:
                 if n not in seen:
                     seen.add(n)
                     result.append(n)
                     if len(result) >= effective_k:
                         return result
-        # Pad with remaining numbers if still short
-        for n in range(self.min_val, self.max_val + 1):
+        # Pad with remaining numbers from the Steiner pool if still short.
+        for n in range(self.min_val, self.min_val + self.v):
             if n not in seen:
                 result.append(n)
                 seen.add(n)
@@ -236,34 +447,53 @@ class SteinerStrategy(PredictModel):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_steiner_on_pool(pool: List[int]) -> List[Tuple[int, int, int]]:
-        """Greedy pair-disjoint triple decomposition of a custom pool.
+    def _build_steiner_on_pool(pool: List[int], k: int = 3, t: int = 2) -> List[Tuple[int, ...]]:
+        """Greedy ``t``-wise-disjoint ``k``-block decomposition of a custom pool.
 
-        ``pool`` must be a list of distinct integers.  Returned triples
-        are sorted ascending so the algorithm is deterministic.
+        ``pool`` must be a list of distinct integers.  Returned blocks
+        are sorted ascending so the algorithm is deterministic.  This
+        is the on-pool counterpart of :meth:`_build_partial_steiner` and
+        supports any ``(t, k)`` combination.
         """
         sorted_pool = sorted(set(pool))
         n = len(sorted_pool)
-        if n < 3:
+        if n < k:
             return []
-        triples: List[Tuple[int, int, int]] = []
-        covered: set = set()
-        for a in range(n):
-            for b in range(a + 1, n):
-                pair = (a, b)
-                if pair in covered:
+        if t < 1 or k < t or k > n:
+            return []
+        blocks: List[Tuple[int, ...]] = []
+        covered: set = set()  # frozensets of t-tuples already covered
+
+        rng = list(range(n))
+        for anchor in combinations(rng, t):
+            anchor_set = frozenset(anchor)
+            anchor_sorted = sorted(anchor)
+            anchor_vals = [sorted_pool[i] for i in anchor_sorted]
+            anchor_val_set = frozenset(anchor_vals)
+            if anchor_val_set in covered:
+                continue
+            extras: List[int] = []
+            for ni in rng:
+                if ni in anchor_set:
                     continue
-                for c in range(b + 1, n):
-                    p1 = (a, c)
-                    p2 = (b, c)
-                    if p1 in covered or p2 in covered:
-                        continue
-                    triples.append((sorted_pool[a], sorted_pool[b], sorted_pool[c]))
-                    covered.add(pair)
-                    covered.add(p1)
-                    covered.add(p2)
+                block_vals = anchor_vals + [sorted_pool[j] for j in extras] + [sorted_pool[ni]]
+                conflict = False
+                for tup in combinations(block_vals, t):
+                    if frozenset(tup) in covered:
+                        conflict = True
+                        break
+                if conflict:
+                    continue
+                extras.append(ni)
+                if len(extras) == k - t:
                     break
-        return triples
+            if len(extras) < k - t:
+                continue
+            block = tuple(sorted(anchor_vals + [sorted_pool[j] for j in extras]))
+            blocks.append(block)
+            for tup in combinations(block, t):
+                covered.add(frozenset(tup))
+        return blocks
 
     def _pool_pair_freq(self, target_date: date, pool: List[int]) -> Dict[Tuple[int, int], int]:
         """Pair co-occurrence counts for pairs drawn from ``pool`` only.
@@ -283,11 +513,10 @@ class SteinerStrategy(PredictModel):
         coverage: int = 3,
         number_predict: Optional[int] = None,
     ) -> List[int]:
-        """Pick ``number_predict`` numbers from ``pool`` using Steiner triples.
+        """Pick ``number_predict`` numbers from ``pool`` using Steiner blocks.
 
-        The structural unit adapts to ``number_predict`` (defaults to
-        ``self.number_predict``) so the same method works for any
-        Vietlott product:
+        For ``k == 3`` (the default) the structural unit adapts to
+        ``number_predict``:
 
         ===========  =========================  ==================================
         number_predict  Steiner structure         example
@@ -298,10 +527,8 @@ class SteinerStrategy(PredictModel):
         6            2 disjoint triples         [a, b, c, d, e, f]
         ===========  =========================  ==================================
 
-        For 5/35 this method returns 5 numbers natively (1 Steiner triple
-        + 1 pair-disjoint pair from another triple), instead of the
-        previous behaviour of building 6 numbers and slicing off the
-        last.
+        For other ``k`` the ticket is the union of enough disjoint blocks
+        to cover ``number_predict`` slots.
 
         Parameters
         ----------
@@ -339,55 +566,160 @@ class SteinerStrategy(PredictModel):
 
         pool_freq = self._pool_pair_freq(target_date, sorted_pool)
 
-        # Special case: number_predict <= 2 has no Steiner triple to
-        # anchor on, so we just pick the highest-frequency pair /
-        # singleton from the pool.
-        if number_predict <= 2:
-            unit = self._best_disjoint_unit(set(), [], pool_freq, number_predict, sorted_pool)
-            if not unit:
+        # Fast path for k=3 — use the original unit-based decomposer.
+        if self.k == 3:
+            triples = self._build_steiner_on_pool(sorted_pool, k=3, t=self.t)
+            if not triples:
                 return sorted(sorted_pool)[:number_predict]
-            # Pad to number_predict when the pool has few candidates.
-            if len(unit) < number_predict:
-                for n in sorted_pool:
-                    if n not in unit:
-                        unit.add(n)
-                    if len(unit) >= number_predict:
-                        break
-            return sorted(unit)[:number_predict]
 
-        triples = self._build_steiner_on_pool(sorted_pool)
-        if not triples:
+            # Special case: number_predict <= 2 has no Steiner triple to
+            # anchor on, so we just pick the highest-frequency pair /
+            # singleton from the pool.
+            if number_predict <= 2:
+                unit = self._best_disjoint_unit(set(), [], pool_freq, number_predict, sorted_pool)
+                if not unit:
+                    return sorted(sorted_pool)[:number_predict]
+                # Pad to number_predict when the pool has few candidates.
+                if len(unit) < number_predict:
+                    for n in sorted_pool:
+                        if n not in unit:
+                            unit.add(n)
+                        if len(unit) >= number_predict:
+                            break
+                return sorted(unit)[:number_predict]
+
+            units = self._decompose_into_units(number_predict)
+            scored_triples = [(self._score_block(t, pool_freq), idx, t) for idx, t in enumerate(triples)]
+            scored_triples.sort(key=lambda x: (-x[0], x[1]))
+
+            steiner_tickets: List[Tuple[int, ...]] = []
+            seen: set = set()
+            for _, _, t1 in scored_triples:
+                if len(steiner_tickets) >= coverage:
+                    break
+                ticket_nums: set = set(t1)
+                success = True
+                for unit_size in units[1:]:
+                    unit_set = self._best_disjoint_unit(ticket_nums, triples, pool_freq, unit_size, sorted_pool)
+                    if not unit_set:
+                        success = False
+                        break
+                    ticket_nums |= unit_set
+                if not success or len(ticket_nums) != number_predict:
+                    continue
+                ticket = tuple(sorted(ticket_nums))
+                if ticket in seen:
+                    continue
+                seen.add(ticket)
+                steiner_tickets.append(ticket)
+
+            # Top up with random samples from the pool when Steiner can't
+            # produce enough distinct tickets to satisfy the requested
+            # coverage.  See the general-k path below for the same logic.
+            random_tickets: List[Tuple[int, ...]] = []
+            if len(steiner_tickets) < coverage:
+                needed = coverage - len(steiner_tickets)
+                for _ in range(needed):
+                    if len(sorted_pool) <= number_predict:
+                        sample = tuple(sorted(random.sample(sorted_pool, len(sorted_pool))))
+                    else:
+                        sample = tuple(sorted(random.sample(sorted_pool, number_predict)))
+                    if sample in seen:
+                        continue
+                    seen.add(sample)
+                    random_tickets.append(sample)
+                    if len(random_tickets) >= needed:
+                        break
+                while len(random_tickets) < needed:
+                    fallback = tuple(sorted_pool[:number_predict])
+                    if fallback in seen:
+                        for offset in range(1, len(sorted_pool)):
+                            cand = tuple(sorted(sorted_pool[offset : offset + number_predict]))
+                            if cand not in seen:
+                                fallback = cand
+                                break
+                    seen.add(fallback)
+                    random_tickets.append(fallback)
+
+            tickets = steiner_tickets + random_tickets
+            if not tickets:
+                return sorted(sorted_pool)[:number_predict]
+
+            idx = self._call_counter
+            self._call_counter += 1
+            return list(tickets[idx % len(tickets)])
+
+        # General-k path: greedily pick disjoint blocks until we cover number_predict slots.
+        blocks = self._build_steiner_on_pool(sorted_pool, k=self.k, t=self.t)
+        if not blocks:
             return sorted(sorted_pool)[:number_predict]
 
-        # Decompose number_predict into Steiner units.
-        # Example: 5 -> [3, 2]; 6 -> [3, 3]; 4 -> [3, 1]; 3 -> [3]
-        units = self._decompose_into_units(number_predict)
+        scored = [(self._score_block(b, pool_freq), idx, b) for idx, b in enumerate(blocks)]
+        scored.sort(key=lambda x: (-x[0], x[1]))
 
-        # Sort triples by pair-score for greedy ticket assembly.
-        scored_triples = [(self._score_triple(t, pool_freq), idx, t) for idx, t in enumerate(triples)]
-        scored_triples.sort(key=lambda x: (-x[0], x[1]))
-
-        tickets: List[Tuple[int, ...]] = []
+        blocks_per_ticket = max(1, math.ceil(number_predict / self.k))
+        steiner_tickets: List[Tuple[int, ...]] = []
         seen: set = set()
-        for _, _, t1 in scored_triples:
-            if len(tickets) >= coverage:
+        for _, _, b1 in scored:
+            if len(steiner_tickets) >= coverage:
                 break
-            ticket_nums: set = set(t1)
-            success = True
-            for unit_size in units[1:]:
-                unit_set = self._best_disjoint_unit(ticket_nums, triples, pool_freq, unit_size, sorted_pool)
-                if not unit_set:
-                    success = False
+            ticket_nums: set = set(b1)
+            units_left = blocks_per_ticket - 1
+            for _, _, b2 in scored:
+                if units_left == 0:
                     break
-                ticket_nums |= unit_set
-            if not success or len(ticket_nums) != number_predict:
+                if set(b2) & ticket_nums:
+                    continue
+                ticket_nums |= set(b2)
+                units_left -= 1
+            ticket = tuple(sorted(ticket_nums))[:number_predict]
+            if len(ticket) != number_predict:
                 continue
-            ticket = tuple(sorted(ticket_nums))
             if ticket in seen:
                 continue
             seen.add(ticket)
-            tickets.append(ticket)
+            steiner_tickets.append(ticket)
 
+        # When the Steiner system can't produce enough disjoint blocks to
+        # satisfy the requested coverage (e.g. restrictive t/k values on a
+        # small pool), top up with random samples drawn from the pool.
+        # Each random ticket is a uniform sample of ``number_predict``
+        # elements from the pool — they preserve the proposer's signal
+        # (the pool) while breaking the Steiner cycle so the caller
+        # always gets the requested number of distinct tickets.
+        random_tickets: List[Tuple[int, ...]] = []
+        if len(steiner_tickets) < coverage:
+            needed = coverage - len(steiner_tickets)
+            for _ in range(needed):
+                if len(sorted_pool) <= number_predict:
+                    sample = tuple(sorted(random.sample(sorted_pool, len(sorted_pool))))
+                else:
+                    sample = tuple(sorted(random.sample(sorted_pool, number_predict)))
+                if sample in seen:
+                    continue
+                seen.add(sample)
+                random_tickets.append(sample)
+                if len(random_tickets) >= needed:
+                    break
+            # If random sampling still produced duplicates (very small
+            # pool), pad with sorted-prefix of the pool as a last resort.
+            while len(random_tickets) < needed:
+                fallback = tuple(sorted_pool[:number_predict])
+                if fallback in seen:
+                    # Shift by one to get a distinct tuple.
+                    for offset in range(1, len(sorted_pool)):
+                        cand = tuple(sorted(sorted_pool[offset : offset + number_predict]))
+                        if cand not in seen:
+                            fallback = cand
+                            break
+                seen.add(fallback)
+                random_tickets.append(fallback)
+
+        # The combined ticket list is ranked: all Steiner-ranked tickets
+        # first, then random fallbacks.  The internal call counter cycles
+        # through this combined list so successive calls return distinct
+        # tickets until the coverage is exhausted.
+        tickets = steiner_tickets + random_tickets
         if not tickets:
             return sorted(sorted_pool)[:number_predict]
 
@@ -396,7 +728,7 @@ class SteinerStrategy(PredictModel):
         return list(tickets[idx % len(tickets)])
 
     # ------------------------------------------------------------------
-    # Structural-unit helpers (used by predict_from_pool)
+    # Structural-unit helpers (used by predict_from_pool, k=3 path)
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -434,7 +766,7 @@ class SteinerStrategy(PredictModel):
     def _best_disjoint_unit(
         self,
         used: set,
-        triples: List[Tuple[int, int, int]],
+        triples: List[Tuple[int, ...]],
         freq: Dict[Tuple[int, int], int],
         unit_size: int,
         pool: List[int],
@@ -444,7 +776,7 @@ class SteinerStrategy(PredictModel):
 
         * ``unit_size == 3`` — best disjoint triple from the partial
           Steiner system.  Score = sum of the triple's 3 internal
-          pair-frequencies (delegates to :meth:`_score_triple`).
+          pair-frequencies (delegates to :meth:`_score_block`).
         * ``unit_size == 2`` — best disjoint pair.  Iterates over all
           pairs in ``pool`` (not just those in triples) since a pair
           may be the chosen unit even when it never appeared inside a
@@ -457,12 +789,12 @@ class SteinerStrategy(PredictModel):
         Returns an empty set if no disjoint unit can be found.
         """
         if unit_size == 3:
-            best: Optional[Tuple[int, int, int]] = None
+            best: Optional[Tuple[int, ...]] = None
             best_score = -1
             for t in triples:
                 if set(t) & used:
                     continue
-                s = self._score_triple(t, freq)
+                s = self._score_block(t, freq)
                 if s > best_score:
                     best_score = s
                     best = t
@@ -511,34 +843,51 @@ class SteinerStrategy(PredictModel):
     # PredictModel interface
     # ------------------------------------------------------------------
 
-    def filter_pool(self, target_date, pool: List[int], k: int) -> List[int]:
+    def filter_pool(self, target_date, pool: List[int], k: int, coverage: int = 1) -> List[int]:
         """Filter a candidate pool using Steiner's native ``predict_from_pool``.
 
         Returns exactly ``k`` numbers from ``pool`` structured as Steiner
-        triples (or fallback if the pool or Steiner system is too small).
+        blocks (or fallback if the pool or Steiner system is too small).
+
+        Parameters
+        ----------
+        target_date:
+            Date for which to generate the prediction.
+        pool:
+            Candidate pool of distinct numbers to draw from.
+        k:
+            Desired number of output numbers.
+        coverage:
+            How many distinct tickets to build internally.  Successive
+            calls rotate through the ``coverage`` ranked tickets via the
+            internal call counter.  Increase this when the caller wants
+            more than one distinct ticket (e.g. ``coverage =
+            ticket_count`` from the pipeline).
         """
         if k >= len(pool):
             return sorted(set(pool))
-        picked = self.predict_from_pool(target_date, pool=list(pool), coverage=3, number_predict=k)
+        picked = self.predict_from_pool(target_date, pool=list(pool), coverage=max(1, int(coverage)), number_predict=k)
         return sorted(set(picked))
 
-    def predict(self, date: date) -> List[int]:
-        """Predict numbers as the i-th best pair of disjoint Steiner triples.
+    def predict(self, date: date, candidate_pool: Optional[List[int]] = None) -> List[int]:
+        """Predict numbers as the i-th best union of disjoint Steiner blocks.
 
-        Returns ``self.number_predict`` numbers (sliced from the 6-element
-        union of 2 disjoint triples), so it works for any game — 5/35
-        returns 5, 6/55 and 6/45 return 6.
+        Returns ``self.number_predict`` numbers by unioning
+        :func:`_blocks_per_ticket` disjoint Steiner blocks and slicing
+        the result.  Works for any product — 5/35 returns 5, 6/55 and
+        6/45 return 6, regardless of the block size ``k``.
         """
-        pairs = self._top_disjoint_pairs(date, k=max(self.time_predict, 1))
-        idx = self._call_counter
-        self._call_counter += 1
+        if candidate_pool is not None:
+            return self.predict_from_pool(date, pool=list(candidate_pool), coverage=max(self.time_predict, 1))
 
-        if not pairs:
-            # Cold-start fallback: take the first 6 sorted numbers from the
-            # union of triples.
+        tickets = self._top_tickets(date, k=max(self.time_predict, 1))
+
+        if not tickets:
+            # Cold-start fallback: take the first number_predict sorted
+            # numbers from the union of blocks.
             nums: List[int] = []
-            for t in self._triples:
-                for n in t:
+            for blk in self._blocks:
+                for n in blk:
                     if n not in nums:
                         nums.append(n)
                     if len(nums) >= self.number_predict:
@@ -553,5 +902,6 @@ class SteinerStrategy(PredictModel):
                 n += 1
             return sorted(nums[: self.number_predict])
 
-        t1, t2 = pairs[idx % len(pairs)]
-        return sorted(set(t1) | set(t2))[: self.number_predict]
+        idx = self._call_counter
+        self._call_counter += 1
+        return tickets[idx % len(tickets)]

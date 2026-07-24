@@ -266,6 +266,45 @@ class TestGenerateTickets:
         assert all(1 <= n <= 55 for n in result["tickets"][0])
         assert result["total_cost_vnd"] == 10000
 
+    def test_generate_requested_ticket_count_satisfied_with_steiner(self):
+        """Regression: ticket_count must be satisfied even when Steiner is restrictive.
+
+        Previously the chain was fully deterministic, so requesting 30
+        tickets for a Steiner step with limited disjoint blocks returned
+        only 3.  The fix threads ``ticket_count`` through as
+        ``coverage`` and tops up with random samples from the pool.
+        """
+        pipeline = {
+            "product": "power_655",
+            "groups": [
+                {
+                    "name": "Restrictive Steiner",
+                    "strategies": [
+                        {"strategy": "pair_frequency", "params": {"lookback_days": 365}, "pool_size": 15},
+                        {
+                            "strategy": "steiner",
+                            "params": {"lookback_days": 365, "t": "5", "k": "6", "v": "15"},
+                            "pool_size": 6,
+                        },
+                    ],
+                    "pick_count": 6,
+                },
+            ],
+            "combiner": {"method": "concatenate"},
+            "post_filters": {},
+            "ticket_count": 30,
+        }
+        result = generate_tickets(pipeline, target_date=date(2024, 6, 15))
+        assert len(result["tickets"]) == 30, (
+            f"Expected 30 tickets, got {len(result['tickets'])} — Steiner chain failed to fall back to random"
+        )
+        # All 30 must be distinct
+        unique = {tuple(t) for t in result["tickets"]}
+        assert len(unique) == 30, f"Expected 30 unique tickets, got {len(unique)}"
+        for ticket in result["tickets"]:
+            assert len(ticket) == 6
+            assert all(1 <= n <= 55 for n in ticket)
+
 
 # ---------------------------------------------------------------------------
 # run_backtest

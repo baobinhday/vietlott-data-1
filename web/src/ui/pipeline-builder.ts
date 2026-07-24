@@ -9,13 +9,20 @@ function stepMetaFromCard(card: HTMLElement): string {
     .map((row) => {
       const select = row.querySelector('.step-strategy-select') as HTMLSelectElement | null;
       const input = row.querySelector('.step-pool-size input') as HTMLInputElement | null;
-      return `${select?.value ?? ''}:${input?.value ?? ''}`;
+      const paramsInputs = Array.from(row.querySelectorAll('.step-params-panel input, .step-params-panel select')) as (HTMLInputElement | HTMLSelectElement)[];
+      const paramsMeta = paramsInputs.map((i) => `${i.name || i.className}:${i.type === 'checkbox' ? (i as HTMLInputElement).checked : i.value}`).join(',');
+      return `${select?.value ?? ''}:${input?.value ?? ''}:[${paramsMeta}]`;
     })
     .join('|');
 }
 
 function stepMetaFromState(group: GroupSpec): string {
-  return group.strategies.map((s) => `${s.strategy}:${s.pool_size ?? ''}`).join('|');
+  return group.strategies
+    .map((s) => {
+      const paramsStr = s.params ? JSON.stringify(s.params) : '';
+      return `${s.strategy}:${s.pool_size ?? ''}:${paramsStr}`;
+    })
+    .join('|');
 }
 
 export function renderPipelineBuilder(): HTMLElement {
