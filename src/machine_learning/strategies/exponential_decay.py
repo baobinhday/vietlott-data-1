@@ -92,7 +92,10 @@ class ExponentialDecayStrategy(PredictModel):
         past["_weight"] = np.exp(-self._decay_lambda * past["_days_ago"].to_numpy())
 
         # Explode result lists and sum weights per number in one groupby pass.
-        exploded = past[["result", "_weight"]].explode("result").dropna(subset=["result"])
+        # Slice each result to main numbers only (excludes the special number).
+        result_weight = past[["result", "_weight"]].copy()
+        result_weight["result"] = result_weight["result"].apply(self._main_numbers)
+        exploded = result_weight.explode("result").dropna(subset=["result"])
         exploded["result"] = exploded["result"].astype(int)
         grouped = exploded.groupby("result")["_weight"].sum()
 
