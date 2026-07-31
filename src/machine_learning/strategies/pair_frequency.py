@@ -81,7 +81,7 @@ class PairFrequencyStrategy(PredictModel):
         """
         start_date = target_date - timedelta(days=self.lookback_days)
         mask = (self.df_sorted["date"] >= start_date) & (self.df_sorted["date"] < target_date)
-        results_list: List[List[int]] = self.df_sorted.loc[mask, "result"].tolist()
+        results_list: List[List[int]] = [self._main_numbers(r) for r in self.df_sorted.loc[mask, "result"].tolist()]
 
         individual_freq: Dict[int, int] = defaultdict(int)
         cooccurrence: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
