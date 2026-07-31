@@ -21,6 +21,7 @@ algorithm and may be partial systems.
 
 import math
 import random
+from collections import OrderedDict
 from datetime import date
 from itertools import combinations
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -117,6 +118,12 @@ class SteinerStrategy(PredictModel):
         self.df_sorted: pd.DataFrame = df.sort_values("date").reset_index(drop=True)
         self._pair_freq_cache: Dict[date, Dict[Tuple[int, int], int]] = {}
         self._top_tickets_cache: Dict[Tuple[date, int], List[List[int]]] = {}
+        # Bounded LRU cache for the on-pool Steiner triple decomposition.
+        # Keyed by ``(frozenset(pool), k, t)`` so repeated calls with the
+        # same pool skip the O(n³) greedy reconstruction.  Bounded to
+        # ``_max_pool_cache`` entries (~768 KB at the default size of 256).
+        self._pool_blocks_cache: "OrderedDict[Tuple[frozenset, int, int], List[Tuple[int, ...]]]" = OrderedDict()
+        self._max_pool_cache: int = 256
         self._call_counter: int = 0
 
     # ------------------------------------------------------------------
@@ -173,6 +180,7 @@ class SteinerStrategy(PredictModel):
         self._blocks = self._build_partial_steiner()
         self._pair_freq_cache.clear()
         self._top_tickets_cache.clear()
+        self._pool_blocks_cache.clear()
         # Note: ``_call_counter`` is intentionally preserved so the
         # existing ``predict()`` rotation continues from where it left
         # off across product reconfigurations.
@@ -316,7 +324,7 @@ class SteinerStrategy(PredictModel):
 
         freq: Dict[Tuple[int, int], int] = {}
         for result in past["result"]:
-            nums = sorted(int(n) for n in result)
+            nums = sorted(int(n) for n in self._main_numbers(result))
             for a, b in combinations(nums, 2):
                 key = (min(a, b), max(a, b))
                 freq[key] = freq.get(key, 0) + 1
@@ -495,6 +503,28 @@ class SteinerStrategy(PredictModel):
                 covered.add(frozenset(tup))
         return blocks
 
+    def _build_steiner_on_pool_cached(self, pool: List[int], k: int = 3, t: int = 2) -> List[Tuple[int, ...]]:
+        """LRU-cached wrapper around :meth:`_build_steiner_on_pool`.
+
+        The on-pool decomposition is ``O(n³)`` and depends only on the
+        pool contents and the ``(k, t)`` parameters — it is independent
+        of ``target_date`` and historical data.  Repeated backtest rows
+        that receive the same pool from the proposer (common across
+        adjacent dates) therefore hit the cache and skip the
+        reconstruction.  Bounded to ``_max_pool_cache`` entries to keep
+        memory fixed; the oldest entry is evicted on overflow (LRU).
+        """
+        key = (frozenset(pool), k, t)
+        cached = self._pool_blocks_cache.get(key)
+        if cached is not None:
+            self._pool_blocks_cache.move_to_end(key)
+            return cached
+        blocks = self._build_steiner_on_pool(pool, k=k, t=t)
+        self._pool_blocks_cache[key] = blocks
+        if len(self._pool_blocks_cache) > self._max_pool_cache:
+            self._pool_blocks_cache.popitem(last=False)
+        return blocks
+
     def _pool_pair_freq(self, target_date: date, pool: List[int]) -> Dict[Tuple[int, int], int]:
         """Pair co-occurrence counts for pairs drawn from ``pool`` only.
 
@@ -568,7 +598,7 @@ class SteinerStrategy(PredictModel):
 
         # Fast path for k=3 — use the original unit-based decomposer.
         if self.k == 3:
-            triples = self._build_steiner_on_pool(sorted_pool, k=3, t=self.t)
+            triples = self._build_steiner_on_pool_cached(sorted_pool, k=3, t=self.t)
             if not triples:
                 return sorted(sorted_pool)[:number_predict]
 
@@ -650,7 +680,7 @@ class SteinerStrategy(PredictModel):
             return list(tickets[idx % len(tickets)])
 
         # General-k path: greedily pick disjoint blocks until we cover number_predict slots.
-        blocks = self._build_steiner_on_pool(sorted_pool, k=self.k, t=self.t)
+        blocks = self._build_steiner_on_pool_cached(sorted_pool, k=self.k, t=self.t)
         if not blocks:
             return sorted(sorted_pool)[:number_predict]
 

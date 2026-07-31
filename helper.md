@@ -34,7 +34,7 @@ FastAPI vừa serve API vừa serve frontend static (từ `web/dist/`).
 make web-build    # tương đương: cd web && npm install && npm run build
 
 # Chạy API (frontend đã được mount tự động nếu web/dist tồn tại)
-uv run uvicorn vietlott.web_api.app:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn vietlott.web_api.app:app --reload --host 0.0.0.0 --port 9000
 ```
 
 Mở http://localhost:8000 trong trình duyệt.
@@ -262,3 +262,43 @@ docker-compose.yml                         # 1 service, mount ./data read-only
 - Bảng giải thưởng chưa custom theo từng product (đang dùng default của base class `PredictModel.prices`). TODO trong `src/vietlott/web_api/service.py`.
 - 3 product được optimize UX là `power_655`, `power_645`, `power_535`; các product khác vẫn list trong dropdown nhưng prize table có thể không chính xác.
 - Backtest 1 vé / kỳ; muốn nhiều vé / kỳ thì tăng `ticket_count` trong request.
+
+## 10. Crawl giá trị giải thưởng (Prize values crawler)
+
+Script `src/crawl_prizes.py` hỗ trợ crawl chi tiết giá trị giải thưởng và số lượng giải trúng của từng kỳ mở thưởng cho các sản phẩm Vietlott (`power655`, `power645`, `3d`, `3d_pro`, `power535`).
+
+### 10.1 Cú pháp sử dụng
+
+```bash
+# Crawl tất cả các trò chơi
+uv run python src/crawl_prizes.py --product all
+
+# Crawl cho sản phẩm cụ thể
+uv run python src/crawl_prizes.py --product power655
+
+# Giới hạn số lượng kỳ quay (dùng để kiểm thử)
+uv run python src/crawl_prizes.py --product power655 --limit 10
+
+# Đổi số lượng worker xử lý song song (mặc định 5 workers)
+uv run python src/crawl_prizes.py --product all --workers 10
+```
+
+### 10.2 Định dạng dữ liệu đầu ra (`data/<product>_prizes.jsonl`)
+
+Mỗi dòng đại diện cho một kỳ quay với đầy đủ thông tin các hạng giải thưởng:
+
+```json
+{
+  "date": "2026-07-30",
+  "id": "01378",
+  "prizes": [
+    {"prize_name": "Jackpot 1", "winners_count": "0", "prize_value": "51.543.425.100"},
+    {"prize_name": "Jackpot 2", "winners_count": "0", "prize_value": "3.934.045.850"},
+    {"prize_name": "Giải Nhất", "winners_count": "10", "prize_value": "40.000.000"},
+    {"prize_name": "Giải Nhì", "winners_count": "896", "prize_value": "500.000"},
+    {"prize_name": "Giải Ba", "winners_count": "18.427", "prize_value": "50.000"}
+  ],
+  "process_time": "2026-07-31T16:01:52.120230+07:00"
+}
+```
+
