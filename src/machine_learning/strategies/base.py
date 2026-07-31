@@ -58,6 +58,15 @@ class PredictModel:
     special_max: int = 0
     special_count: int = 1
 
+    # Training-time toggle: include the special number when building
+    # strategy statistics (Markov transitions, Steiner pair-freq, hot/cold
+    # frequency, etc.).  Default ``False`` — strategies train on main
+    # numbers only, which is the correct behaviour for prize computation
+    # (main_match is judged on main numbers, special_match is separate).
+    # Set to ``True`` to reproduce the legacy behaviour where the special
+    # number was treated as just another main number during training.
+    include_special_in_training: bool = False
+
     col_date = "date"
     col_result = "result"
     col_predict = "predicted"
@@ -102,6 +111,8 @@ class PredictModel:
         self.min_val = min_val
         self.max_val = max_val
         self.prize_fn = None  # set by render files per product
+        self.product_name: str | None = None  # set by apply_product_config
+        self._id_column: str = "id"  # source column carrying the draw id
 
     # ------------------------------------------------------------------
     # Helpers
@@ -111,6 +122,32 @@ class PredictModel:
     def _count_number(cls, number_series):
         """Return a frequency table for numbers across all draw rows."""
         return number_series.explode().value_counts().to_frame("times")
+
+    def _main_numbers(self, result):
+        """Return only the main numbers from a draw's result list.
+
+        Excludes the special number (số đặc biệt) for products that have one
+        (e.g. Power 6/55, Power 5/35) **unless** ``include_special_in_training``
+        is set to ``True`` on this instance.  Strategies must train only on
+        main numbers, so this helper slices ``result`` to ``special_position``
+        when the product has a special number and the row is long enough.
+
+        For legacy rows with fewer than ``special_position + 1`` elements
+        (e.g. 6-number rows from before the special was added), returns
+        the result unchanged.
+
+        Parameters
+        ----------
+        result:
+            A list-like of drawn numbers.  May be a list, tuple or
+            ``numpy`` array; a fresh ``list`` is always returned so
+            callers may mutate it freely.
+        """
+        if self.include_special_in_training:
+            return list(result)
+        if self.has_special and len(result) > self.special_position:
+            return list(result[: self.special_position])
+        return list(result)
 
     @classmethod
     def _compare_list(
@@ -210,6 +247,7 @@ class PredictModel:
             from vietlott.config.prizes import get_prize_fn
 
             self.prize_fn = get_prize_fn(config.name)
+            self.product_name = config.name
         return self
 
     def predict_special(self, date, candidate_pool=None):
@@ -377,6 +415,9 @@ class PredictModel:
                             PredictModel.col_special_match: special_match,
                             PredictModel.col_correct: is_correct,
                             PredictModel.col_correct_num: main_match,  # backward compat alias
+                            # Carry the source draw id so per-draw prize
+                            # lookups can run after ``evaluate()``.
+                            "draw_id": row.get(self._id_column) if hasattr(row, "get") else None,
                         }
                     )
 
@@ -417,14 +458,47 @@ class PredictModel:
         -------
         (cost, gain, profit)
             All values in VND.  ``profit = gain - cost``.
+
+        When ``self.product_name`` is set and the backtest rows carry a
+        ``draw_id``, the gain is computed via
+        :func:`vietlott.config.prizes.get_actual_prize_for_draw` so
+        per-draw jackpots from ``data/<product>_prizes.jsonl`` are used.
+        Falls back to the configured ``prize_fn`` (and ultimately the
+        hardcoded baseline) when the data is missing.
         """
         cost = len(self.df_backtest_evaluate) * self.ticket_price
-        gain = sum(
-            self._prize_for(int(m), int(s))
-            for m, s in zip(
-                self.df_backtest_evaluate[PredictModel.col_main_match],
-                self.df_backtest_evaluate[PredictModel.col_special_match],
+        # Try per-draw lookup first; resolve import lazily so the base
+        # module has no hard dependency on the prize data files.
+        product = self.product_name or ""
+        use_actual = bool(product) and "draw_id" in self.df_backtest_evaluate.columns
+        if use_actual:
+            from vietlott.config.prizes import get_actual_prize_for_draw
+
+            def _gain_row(m, s, did):
+                return int(
+                    get_actual_prize_for_draw(
+                        product,
+                        did,
+                        int(m),
+                        int(s),
+                    )
+                )
+
+            gain = sum(
+                _gain_row(m, s, did)
+                for m, s, did in zip(
+                    self.df_backtest_evaluate[PredictModel.col_main_match],
+                    self.df_backtest_evaluate[PredictModel.col_special_match],
+                    self.df_backtest_evaluate["draw_id"],
+                )
             )
-        )
+        else:
+            gain = sum(
+                self._prize_for(int(m), int(s))
+                for m, s in zip(
+                    self.df_backtest_evaluate[PredictModel.col_main_match],
+                    self.df_backtest_evaluate[PredictModel.col_special_match],
+                )
+            )
 
         return cost, gain, gain - cost
