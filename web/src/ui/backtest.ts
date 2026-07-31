@@ -32,7 +32,7 @@ export function renderBacktestPanel(): HTMLElement {
   ticketCountInput.className = 'form-input';
   ticketCountInput.type = 'number';
   ticketCountInput.min = '1';
-  ticketCountInput.max = '50';
+  ticketCountInput.max = '500';
   ticketCountInput.value = `${getState().backtestTicketCount}`;
   ticketCountInput.addEventListener('input', () => {
     const raw = parseInt(ticketCountInput.value, 10);

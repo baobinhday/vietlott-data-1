@@ -286,7 +286,12 @@ def run_backtest(
             raw_special_match = md.get("special_match", 0)
             main_match: int = int(raw_main_match)
             special_match: int = int(raw_special_match)
-            prize: int = int(pipeline._prize_for(main_match, special_match))
+            # Prefer the crawled per-draw prize (actual jackpot etc.),
+            # fall back to the hardcoded baseline when missing.
+            from vietlott.config.prizes import get_actual_prize_for_draw
+
+            draw_id_raw = row.get("id") if hasattr(row, "get") else None
+            prize: int = int(get_actual_prize_for_draw(product, draw_id_raw, main_match, special_match))
             total_prize += prize
 
             # Collect the predicted ticket (key is "predicted", not "predict").
