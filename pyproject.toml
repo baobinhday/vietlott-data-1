@@ -42,6 +42,9 @@ vietlott-crawl = "vietlott.cli.crawl:crawl"
 vietlott-missing = "vietlott.cli.missing:detect_missing_data"
 vietlott-render-readme = "src.render_readme:main"
 vietlott-render-docs = "src.render_docs:main"
+vietlott-evaluate = "machine_learning.evaluate_strategy:evaluate"
+vietlott-eval-535 = "machine_learning.evaluate_prediction_535_repeated:main"
+
 
 [tool.ruff]
 line-length = 120
