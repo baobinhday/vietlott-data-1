@@ -374,6 +374,119 @@ def test_6_45_no_special(df):
 
 
 # ---------------------------------------------------------------------------
+# _main_numbers helper + special-number exclusion in strategy training
+# ---------------------------------------------------------------------------
+
+
+class TestMainNumbersHelper:
+    """Verify ``PredictModel._main_numbers`` slices off the special number."""
+
+    @staticmethod
+    def _build_no_special():
+        """A bare PredictModel that has not had a product config applied."""
+        return PredictModel(df=pd.DataFrame(), time_predict=1, min_val=1, max_val=55)
+
+    def test_6_55_slices_seventh_number(self):
+        """6/55: 7-number row → first 6 only."""
+        model = self._build_no_special()
+        model.has_special = True
+        model.special_position = 6
+        assert model._main_numbers([1, 2, 3, 4, 5, 6, 99]) == [1, 2, 3, 4, 5, 6]
+
+    def test_5_35_slices_sixth_number(self):
+        """5/35: 6-number row → first 5 only."""
+        model = self._build_no_special()
+        model.has_special = True
+        model.special_position = 5
+        assert model._main_numbers([10, 20, 30, 33, 34, 7]) == [10, 20, 30, 33, 34]
+
+    def test_legacy_six_number_row_passes_through(self):
+        """Legacy 6-number row when product has special → return unchanged."""
+        model = self._build_no_special()
+        model.has_special = True
+        model.special_position = 6
+        assert model._main_numbers([1, 2, 3, 4, 5, 6]) == [1, 2, 3, 4, 5, 6]
+
+    def test_no_special_returns_full_list(self):
+        """Product without special → always return the full list."""
+        model = self._build_no_special()
+        model.has_special = False
+        model.special_position = 0
+        assert model._main_numbers([1, 2, 3, 4, 5, 6]) == [1, 2, 3, 4, 5, 6]
+        assert model._main_numbers([1, 2, 3, 4, 5, 6, 7]) == [1, 2, 3, 4, 5, 6, 7]
+
+    def test_returns_new_list(self):
+        """The returned list must be a fresh copy, not a view of the input."""
+        model = self._build_no_special()
+        model.has_special = True
+        model.special_position = 6
+        original = [1, 2, 3, 4, 5, 6, 7]
+        sliced = model._main_numbers(original)
+        sliced.append(999)
+        assert original == [1, 2, 3, 4, 5, 6, 7]
+
+    def test_include_special_in_training_true_returns_full(self):
+        """Flag ``True`` overrides the default slicing and returns the full result."""
+        model = self._build_no_special()
+        model.has_special = True
+        model.special_position = 6
+        model.include_special_in_training = True
+        assert model._main_numbers([1, 2, 3, 4, 5, 6, 99]) == [1, 2, 3, 4, 5, 6, 99]
+        assert model._main_numbers([1, 2, 3, 4, 5, 6]) == [1, 2, 3, 4, 5, 6]
+
+    def test_include_special_in_training_false_slices(self):
+        """Flag ``False`` (the default) slices as before."""
+        model = self._build_no_special()
+        model.has_special = True
+        model.special_position = 6
+        model.include_special_in_training = False
+        assert model._main_numbers([1, 2, 3, 4, 5, 6, 99]) == [1, 2, 3, 4, 5, 6]
+
+    def test_default_class_attr_is_false(self):
+        """Class-level default must be ``False`` so existing behaviour is preserved."""
+        assert PredictModel.include_special_in_training is False
+
+
+class TestSpecialExcludedFromStrategyTraining:
+    """Regression tests: the special number must NOT influence training stats."""
+
+    def test_steiner_pair_freq_excludes_special(self):
+        """Steiner pair-freq must never contain a pair involving the 7th number."""
+        config = _get_config_655()
+        rows = [
+            {"date": date(2024, 1, 1) + timedelta(days=i), "result": [1, 2, 3, 4, 5, 6, 99], "id": i + 1}
+            for i in range(20)
+        ]
+        df_local = pd.DataFrame(rows)
+        model = SteinerStrategy(
+            df_local, time_predict=1, min_val=1, max_val=55, lookback_days=None
+        ).apply_product_config(config)
+        # The special is always 99 in the fixture; pair-freq must not contain 99.
+        freq = model._pair_freq(date(2024, 1, 22))
+        assert all(99 not in pair for pair in freq), f"Special 99 leaked into pair-freq: {freq}"
+        # Pairs among main numbers (1..6) should still be present.
+        assert (1, 2) in freq
+        assert (5, 6) in freq
+
+    def test_markov_transition_matrix_excludes_special(self):
+        """Markov transition counts must not include rows where a or b == 99."""
+        config = _get_config_655()
+        # 20 draws: each draw has main [1..6] and special 99.
+        rows = [
+            {"date": date(2024, 1, 1) + timedelta(days=i), "result": [1, 2, 3, 4, 5, 6, 99], "id": i + 1}
+            for i in range(20)
+        ]
+        df_local = pd.DataFrame(rows)
+        model = MarkovChainStrategy(
+            df_local, time_predict=1, min_val=1, max_val=55, lookback_days=365
+        ).apply_product_config(config)
+        prev_draw, matrix = model._build_transition_matrix(date(2024, 1, 22))
+        assert 99 not in matrix, "Special 99 leaked into Markov transition matrix keys"
+        # The Markov state (prev_draw) must be the 6 main numbers, not include 99.
+        assert prev_draw == [1, 2, 3, 4, 5, 6]
+
+
+# ---------------------------------------------------------------------------
 # propose_top_numbers (newly added base capability)
 # ---------------------------------------------------------------------------
 
