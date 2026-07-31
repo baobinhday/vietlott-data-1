@@ -43,7 +43,9 @@ class NotRepeatStrategy(PredictModel):
         """Prepare historical data for quick lookups."""
         self.df_sorted = self.df.sort_values("date").reset_index(drop=True)
         # Build date→results mapping without iterrows.
-        self.date_to_results = dict(zip(self.df_sorted["date"], self.df_sorted["result"]))
+        self.date_to_results = {
+            d: self._main_numbers(r) for d, r in zip(self.df_sorted["date"], self.df_sorted["result"])
+        }
 
     def _get_recent_numbers(self, target_date: date) -> set:
         """
