@@ -76,8 +76,9 @@ class BasePowerPredictionSummaryGenerator:
     # instead of wheeling through all of them.  Used by Power 5/35 to buy 2×4
     # tickets/draw instead of 2×12.  ``None`` = leave the default behaviour.
     SPECIALS_TOP_N: ClassVar[Optional[int]] = None
-    SPECIALS_MODE: ClassVar[str] = "hot"  # "hot" or "cold"
-    SPECIALS_LOOKBACK_DAYS: ClassVar[int] = 365
+    SPECIALS_MODE: ClassVar[str] = "hot"  #  "hot", "cold", "long_absence", "markov_steiner", "intersection_la_mc"
+    SPECIALS_LOOKBACK_DRAWS: ClassVar[int] = 60  # Số kỳ quay dùng làm cửa sổ quan sát lookback
+    SPECIALS_OFFSET_DRAWS: ClassVar[int] = 0  # Số kỳ quay lùi lại (offset) trước target_date để bắt đầu khoảng lookback
 
     # ------------------------------------------------------------------
     # "Special" mode: chỉ mua vé khi jackpot > DD_THRESHOLD
@@ -444,7 +445,8 @@ class BasePowerPredictionSummaryGenerator:
                 self._apply_frequency_specials(
                     model,
                     top_n=specials_top_n,
-                    lookback_days=self.SPECIALS_LOOKBACK_DAYS,
+                    lookback_draws=getattr(self, "SPECIALS_LOOKBACK_DRAWS", 60),
+                    offset_draws=getattr(self, "SPECIALS_OFFSET_DRAWS", 0),
                     mode=specials_mode,
                 )
             logger.info(f"Running {name} on {self.PRODUCT_DISPLAY}...")
@@ -523,20 +525,17 @@ class BasePowerPredictionSummaryGenerator:
         return eligible
 
     def _apply_frequency_specials(
-        self, strategy: PredictModel, top_n: int, lookback_days: int, mode: str = "hot"
+        self,
+        strategy: PredictModel,
+        top_n: int,
+        lookback_draws: int = 60,
+        offset_draws: int = 0,
+        mode: str = "hot",
     ) -> None:
         """Replace ``strategy.predict_special`` with a top-N frequency picker (hot or cold).
 
-        When ``mode == "hot"``, returns the ``top_n`` most frequent special numbers.
-        When ``mode == "cold"``, returns the ``top_n`` least frequent special numbers
-        (including numbers that have not appeared yet in the lookback window).
-
-        Ties are broken by ascending numeric value for determinism.
-        When the lookback window has no usable data, falls back to the full special
-        range so the backtest still produces a row per draw.
-
-        Result is cached per ``target_date`` because ``backtest`` calls
-        ``predict_special`` once per row in ``self.df``.
+        Uses historical DRAWS (kỳ quay) gracefully adapting to available history,
+        matching the behavior of main-number prediction strategies.
         """
         cache: Dict = {}
 
@@ -544,18 +543,29 @@ class BasePowerPredictionSummaryGenerator:
             if target_date in cache:
                 return cache[target_date]
 
-            start_date = target_date - timedelta(days=lookback_days)
-            mask = (strategy.df["date"] >= start_date) & (strategy.df["date"] < target_date)
-            specials: List[int] = []
-            for result in strategy.df.loc[mask, "result"].tolist():
-                if hasattr(result, "__len__") and len(result) > strategy.special_position:
-                    specials.append(int(result[strategy.special_position]))
+            # Filter prior draws (strictly before target_date)
+            prior_df = strategy.df[strategy.df["date"] < target_date]
+            total_prior = len(prior_df)
 
+            # Slice available window of draws
+            # offset_draws = 0 means taking up to lookback_draws prior draws
+            # offset_draws = N means skipping N most recent draws
+            end_idx = max(0, total_prior - offset_draws)
+            start_idx = max(0, end_idx - lookback_draws)
+            window_df = prior_df.iloc[start_idx:end_idx]
+
+            specials: List[int] = []
+            if not window_df.empty:
+                for result in window_df["result"].tolist():
+                    if hasattr(result, "__len__") and len(result) > strategy.special_position:
+                        specials.append(int(result[strategy.special_position]))
+
+            # Fall back to full range sorted by number value when 0 historical draws exist
+            all_specials = list(range(strategy.special_min, strategy.special_max + 1))
             if not specials:
-                # No lookback data yet — fall back to the full special range.
-                fallback = list(range(strategy.special_min, strategy.special_max + 1))
-                cache[target_date] = fallback
-                return fallback
+                chosen = sorted(all_specials[:top_n])
+                cache[target_date] = chosen
+                return chosen
 
             # Ensure all possible special numbers are present in counts
             all_specials = range(strategy.special_min, strategy.special_max + 1)
@@ -565,6 +575,78 @@ class BasePowerPredictionSummaryGenerator:
             if mode == "cold":
                 # Sort by (count ascending, value ascending)
                 ranked = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]))
+            elif mode == "long_absence":
+                # Sort by draws since last seen (longest absence first)
+                last_seen_idx = {}
+                for idx, result in enumerate(window_df["result"].tolist()):
+                    if hasattr(result, "__len__") and len(result) > strategy.special_position:
+                        sp = int(result[strategy.special_position])
+                        last_seen_idx[sp] = idx
+                absence_scores = {s: total_prior - last_seen_idx.get(s, -1) for s in all_specials}
+                ranked = sorted(absence_scores.items(), key=lambda kv: (-kv[1], kv[0]))
+            elif mode == "markov_steiner":
+                # Pipeline: MarkovChain proposed top 8 -> Steiner filtered to top_n
+                p8 = list(range(strategy.special_min, strategy.special_max + 1))
+                specials_series = [
+                    int(r[strategy.special_position])
+                    for r in window_df["result"].tolist()
+                    if hasattr(r, "__len__") and len(r) > strategy.special_position
+                ]
+                if len(specials_series) >= 2:
+                    trans = {}
+                    for i in range(len(specials_series) - 1):
+                        prev, curr = specials_series[i], specials_series[i + 1]
+                        trans.setdefault(prev, Counter())[curr] += 1
+                    last_sp = specials_series[-1]
+                    next_counts = trans.get(last_sp, Counter())
+                    scores = {s: next_counts.get(s, 0) for s in all_specials}
+                    ranked_mc = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
+                    p8 = [n for n, _ in ranked_mc[:8]]
+                # Filter p8 with Steiner system strategy
+                from machine_learning.strategies import SteinerStrategy
+
+                st_model = SteinerStrategy(strategy.df, min_val=strategy.special_min, max_val=strategy.special_max)
+                if hasattr(st_model, "filter_pool"):
+                    chosen = st_model.filter_pool(target_date, pool=p8, k=top_n)
+                else:
+                    chosen = sorted(p8[:top_n])
+                cache[target_date] = chosen
+                return chosen
+            elif mode == "intersection_la_mc":
+                # Intersection of Top 8 LongAbsence and Top 8 MarkovChain
+                # 1. LongAbsence Top 8
+                last_seen_idx = {}
+                for idx, result in enumerate(window_df["result"].tolist()):
+                    if hasattr(result, "__len__") and len(result) > strategy.special_position:
+                        sp = int(result[strategy.special_position])
+                        last_seen_idx[sp] = idx
+                absence_scores = {s: total_prior - last_seen_idx.get(s, -1) for s in all_specials}
+                top8_la = set(n for n, _ in sorted(absence_scores.items(), key=lambda kv: (-kv[1], kv[0]))[:8])
+
+                # 2. MarkovChain Top 8
+                specials_series = [
+                    int(r[strategy.special_position])
+                    for r in window_df["result"].tolist()
+                    if hasattr(r, "__len__") and len(r) > strategy.special_position
+                ]
+                if len(specials_series) >= 2:
+                    trans = {}
+                    for i in range(len(specials_series) - 1):
+                        prev, curr = specials_series[i], specials_series[i + 1]
+                        trans.setdefault(prev, Counter())[curr] += 1
+                    last_sp = specials_series[-1]
+                    next_counts = trans.get(last_sp, Counter())
+                    scores = {s: next_counts.get(s, 0) for s in all_specials}
+                    top8_mc = set(n for n, _ in sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:8])
+                else:
+                    top8_mc = set(all_specials)
+
+                # Intersection
+                inter = sorted(list(top8_la & top8_mc))[:top_n]
+                if not inter:
+                    inter = sorted(list(top8_la))[:top_n]
+                cache[target_date] = inter
+                return inter
             else:  # "hot"
                 # Sort by (count descending, value ascending)
                 ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -744,14 +826,42 @@ class BasePowerPredictionSummaryGenerator:
 
         s_correct = df_eval["correct_num"].apply(self._to_int).astype(int)
         match_counts = s_correct.value_counts().sort_index(ascending=False)
-        match_distribution = "\n".join(
-            [f"  - **{matches} matches**: {count:,} times" for matches, count in match_counts.items()]
-        )
+        match_lines = [f"  - **{matches} matches**: {count:,} times" for matches, count in match_counts.items()]
+        if "special_match" in df_eval.columns and model.special_pick_required:
+            special_hits = (df_eval["special_match"].astype(int) > 0).sum()
+            match_lines.append(f"  - **Special number match**: {special_hits:,} times")
+        match_distribution = "\n".join(match_lines)
 
         mask = (s_correct >= self.BEST_THRESHOLD).to_numpy()
         df_best = df_eval.loc[
             mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]
         ].copy()
+
+        # Calculate prize gain for each winning prediction
+        product = model.product_name or ""
+        use_actual = bool(product) and "draw_id" in df_eval.columns
+        if use_actual:
+            from vietlott.config.prizes import get_actual_prize_for_draw
+
+            df_best_draw_ids = df_eval.loc[mask, "draw_id"].tolist()
+            gains = [
+                int(get_actual_prize_for_draw(product, did, int(m), int(s)))
+                for m, s, did in zip(
+                    df_eval.loc[mask, PredictModel.col_main_match],
+                    df_eval.loc[mask, PredictModel.col_special_match],
+                    df_best_draw_ids,
+                )
+            ]
+        else:
+            gains = [
+                model._prize_for(int(m), int(s))
+                for m, s in zip(
+                    df_eval.loc[mask, PredictModel.col_main_match],
+                    df_eval.loc[mask, PredictModel.col_special_match],
+                )
+            ]
+        df_best["gain"] = [f"{g:,} VND" for g in gains]
+
         df_best["result"] = df_best["result"].apply(
             lambda x: str([int(i) for i in x]) if hasattr(x, "__iter__") else str(x)
         )
