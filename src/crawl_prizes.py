@@ -155,7 +155,7 @@ def crawl_product_prizes(product: str, max_workers: int = 5, limit: Optional[int
 
     logger.info(f"Finished crawling prizes for {product}. Added {count} new records to {output_file.name}.")
     if count > 0:
-        from src.sort_prizes import sort_prize_file
+        from sort_prizes import sort_prize_file
 
         sort_prize_file(output_file)
 
