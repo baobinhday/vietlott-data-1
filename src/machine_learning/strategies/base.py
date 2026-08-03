@@ -357,7 +357,7 @@ class PredictModel:
         """
         pass
 
-    def backtest(self, date_from=None, date_to=None):
+    def backtest(self, date_from=None, date_to=None, draw_ids=None):
         """
         Run the strategy over rows in ``self.df``.
 
@@ -378,12 +378,23 @@ class PredictModel:
         date_to:
             Optional end date (inclusive) for the backtest period.  Only
             rows with ``date <= date_to`` are evaluated.
+        draw_ids:
+            Optional iterable / set of draw-id strings.  When supplied,
+            only rows whose ``id`` is in the set are evaluated – the
+            strategies still see the full ``self.df`` for lookback
+            windows / voter logic, but no ticket is "bought" on
+            non-listed draws (no cost, no gain).  Useful for variants
+            that only want to play on specific draws (e.g. when the
+            jackpot crosses a threshold).
         """
         _df = self.df.copy()
         if date_from is not None:
             _df = _df[_df["date"] >= date_from]
         if date_to is not None:
             _df = _df[_df["date"] <= date_to]
+        if draw_ids is not None:
+            id_set = {str(x) for x in draw_ids}
+            _df = _df[_df["id"].astype(str).isin(id_set)]
 
         def fn_apply(row):
             predicted = []
