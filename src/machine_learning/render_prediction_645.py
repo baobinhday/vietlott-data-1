@@ -37,7 +37,7 @@ class Power645PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
 
     # "Special" mode: chỉ mua vé khi Jackpot > 70B (toggle True to enable).
     DD_FILTER_ENABLED: ClassVar[bool] = True
-    DD_THRESHOLD: ClassVar[int] = 30_000_000_000  # 70B VND
+    DD_THRESHOLD: ClassVar[int] = 110_000_000_000  # 78.8B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot"
 
 
