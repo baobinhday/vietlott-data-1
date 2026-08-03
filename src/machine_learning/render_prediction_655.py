@@ -44,7 +44,7 @@ class HybridPredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
 
     # "Special" mode: chỉ mua vé khi Jackpot 1 > 200B (toggle True to enable).
     DD_FILTER_ENABLED: ClassVar[bool] = False
-    DD_THRESHOLD: ClassVar[int] = 200_000_000_000  # 200B VND
+    DD_THRESHOLD: ClassVar[int] = 300_000_000_000  # 200B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot 1"
 
 
