@@ -49,17 +49,22 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
 
     PRODUCT_NAME: ClassVar[str] = "power_535"
     TPD: ClassVar[int] = 4  # 2 mains × 3 hot specials = 6 tickets / draw
-    BEST_THRESHOLD: ClassVar[int] = 4
+    BEST_THRESHOLD: ClassVar[int] = 3
     OUTPUT_NAME: ClassVar[str] = "readme_535.md"
     PRODUCT_DISPLAY: ClassVar[str] = "Power 5/35"
     INCLUDES_SOLO_BASELINES: ClassVar[bool] = True
     INCLUDES_PATTERN_HYBRID: ClassVar[bool] = True
     SPECIALS_TOP_N: ClassVar[int | None] = 4
-    SPECIALS_MODE: ClassVar[str] = "cold"  # Chọn các số đặc biệt ít về nhất
+    # Chế độ chọn số đặc biệt: "hot", "cold", "long_absence", "markov_steiner", "intersection_la_mc"
+    SPECIALS_MODE: ClassVar[str] = (
+        "markov_steiner"  # Khuyến nghị: "intersection_la_mc" (Top 1 cho dàn 4 số) hoặc "markov_steiner"
+    )
+    SPECIALS_LOOKBACK_DRAWS: ClassVar[int] = 60  # Cửa sổ lookback 60 kỳ quay
+    SPECIALS_OFFSET_DRAWS: ClassVar[int] = 30  # Lùi 30 kỳ quay trước ngày hiện tại để bắt đầu lookback
 
     # Jackpot-split threshold (see :mod:`vietlott.config.prizes`).
     DD_FILTER_ENABLED: ClassVar[bool] = True
-    DD_THRESHOLD: ClassVar[int] = 12_000_000_000  # 12B VND
+    DD_THRESHOLD: ClassVar[int] = 15_000_000_000  # 12B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Giải Độc Đắc"
 
 
