@@ -61,6 +61,10 @@ run-crawl: .venv
 	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/vietlott/cli/crawl.py 3d_pro
 	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/vietlott/cli/crawl.py bingo18
 
+run-crawl-prizes: .venv
+	@echo "Running crawl prizes scripts..."
+	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/crawl_prizes.py --product all --workers 10
+
 run-missing: .venv
 	@echo "Running missing scripts..."
 	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/vietlott/cli/missing.py keno
