@@ -61,7 +61,7 @@ class TestPower535PredictionSummaryGenerator:
         generator = Power535PredictionSummaryGenerator()
         strategies = generator._build_and_run_strategies(df_pd)
 
-        assert generator.HOT_SPECIALS_TOP_N == 4
+        assert generator.SPECIALS_TOP_N == 4
 
         for name, tpd, model in strategies:
             assert model.special_pick_required is True
@@ -126,6 +126,31 @@ class TestPower535PredictionSummaryGenerator:
         assert 11 in picked, f"special 11 (3rd, 8x) should be picked, got {picked}"
         assert 1 not in picked, f"special 1 (rare, 1x) should be excluded, got {picked}"
         assert 2 not in picked, f"special 2 (rare, 1x) should be excluded, got {picked}"
+        assert len(picked) == 4
+
+    def test_cold_specials_picks_least_frequent(self):
+        """The picked cold specials should be the least frequent in the lookback."""
+        special_pool = [7] * 15 + [5] * 12 + [11] * 8 + [4] * 3 + [1] * 1 + [2] * 1
+        df_rows = []
+        rng = random.Random(7)
+        start = date(2024, 1, 1)
+        for i, special in enumerate(special_pool):
+            draw_date = start + timedelta(days=i * 2)
+            mains = sorted(rng.sample(range(1, 36), 5))
+            df_rows.append({"date": draw_date, "result": mains + [special], "id": str(i)})
+
+        df_pd = pd.DataFrame(df_rows)
+        generator = Power535PredictionSummaryGenerator()
+
+        from machine_learning.strategies import ColdNumbersStrategy
+
+        strat = ColdNumbersStrategy(df_pd, time_predict=1, min_val=1, max_val=35)
+        strat.apply_product_config(generator.config)
+        generator._apply_frequency_specials(strat, top_n=4, lookback_days=365, mode="cold")
+        picked = strat.predict_special(date(2025, 1, 1))
+        # 1 and 2 appear only 1x, 3, 6, 8, 9, 10, 12 appear 0x. So cold should pick 0x or 1x numbers.
+        assert 7 not in picked, f"special 7 (hottest, 15x) should NOT be picked, got {picked}"
+        assert 5 not in picked, f"special 5 (2nd hottest, 12x) should NOT be picked, got {picked}"
         assert len(picked) == 4
 
     def test_roi_comparison_table(self):

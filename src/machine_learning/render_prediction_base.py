@@ -75,8 +75,9 @@ class BasePowerPredictionSummaryGenerator:
     # top-N most frequent special numbers in the lookback window (per-draw),
     # instead of wheeling through all of them.  Used by Power 5/35 to buy 2×4
     # tickets/draw instead of 2×12.  ``None`` = leave the default behaviour.
-    HOT_SPECIALS_TOP_N: ClassVar[Optional[int]] = None
-    HOT_SPECIALS_LOOKBACK_DAYS: ClassVar[int] = 365
+    SPECIALS_TOP_N: ClassVar[Optional[int]] = None
+    SPECIALS_MODE: ClassVar[str] = "hot"  # "hot" or "cold"
+    SPECIALS_LOOKBACK_DAYS: ClassVar[int] = 365
 
     # ------------------------------------------------------------------
     # "Special" mode: chỉ mua vé khi jackpot > DD_THRESHOLD
@@ -427,8 +428,9 @@ class BasePowerPredictionSummaryGenerator:
         """
         strategy_defs = self._build_strategy_defs(df_pd)
         tpd = self.TPD
-        hot_top_n = self.HOT_SPECIALS_TOP_N
-        apply_hot = hot_top_n is not None
+        specials_top_n = self.SPECIALS_TOP_N
+        specials_mode = getattr(self, "SPECIALS_MODE", "hot")
+        apply_specials = specials_top_n is not None
 
         eligible_ids: Set[str] | None = None
         if self.DD_FILTER_ENABLED:
@@ -438,8 +440,13 @@ class BasePowerPredictionSummaryGenerator:
         for name, model in strategy_defs:
             model.apply_product_config(self.config)
             model.prize_fn = self.prize_fn
-            if apply_hot and model.special_pick_required:
-                self._apply_hot_specials(model, hot_top_n, self.HOT_SPECIALS_LOOKBACK_DAYS)
+            if apply_specials and model.special_pick_required:
+                self._apply_frequency_specials(
+                    model,
+                    top_n=specials_top_n,
+                    lookback_days=self.SPECIALS_LOOKBACK_DAYS,
+                    mode=specials_mode,
+                )
             logger.info(f"Running {name} on {self.PRODUCT_DISPLAY}...")
             model.backtest(
                 date_from=date_from,
@@ -515,14 +522,17 @@ class BasePowerPredictionSummaryGenerator:
         )
         return eligible
 
-    def _apply_hot_specials(self, strategy: PredictModel, top_n: int, lookback_days: int) -> None:
-        """Replace ``strategy.predict_special`` with a top-N hot-frequency picker.
+    def _apply_frequency_specials(
+        self, strategy: PredictModel, top_n: int, lookback_days: int, mode: str = "hot"
+    ) -> None:
+        """Replace ``strategy.predict_special`` with a top-N frequency picker (hot or cold).
 
-        The replacement computes, for each ``target_date``, the frequency of
-        every special number in the ``[target_date - lookback_days, target_date)``
-        window, then returns the ``top_n`` specials with the highest counts
-        (ties broken by ascending numeric value for determinism).  When the
-        lookback window has no usable data, falls back to the full special
+        When ``mode == "hot"``, returns the ``top_n`` most frequent special numbers.
+        When ``mode == "cold"``, returns the ``top_n`` least frequent special numbers
+        (including numbers that have not appeared yet in the lookback window).
+
+        Ties are broken by ascending numeric value for determinism.
+        When the lookback window has no usable data, falls back to the full special
         range so the backtest still produces a row per draw.
 
         Result is cached per ``target_date`` because ``backtest`` calls
@@ -530,7 +540,7 @@ class BasePowerPredictionSummaryGenerator:
         """
         cache: Dict = {}
 
-        def _top_hot_specials(inner_self, target_date, candidate_pool=None):
+        def _top_frequency_specials(inner_self, target_date, candidate_pool=None):
             if target_date in cache:
                 return cache[target_date]
 
@@ -547,15 +557,27 @@ class BasePowerPredictionSummaryGenerator:
                 cache[target_date] = fallback
                 return fallback
 
+            # Ensure all possible special numbers are present in counts
+            all_specials = range(strategy.special_min, strategy.special_max + 1)
             counter = Counter(specials)
-            # Sort by (-count, value) so ties resolve deterministically to the
-            # smaller number.
-            ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+            counts = {s: counter.get(s, 0) for s in all_specials}
+
+            if mode == "cold":
+                # Sort by (count ascending, value ascending)
+                ranked = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]))
+            else:  # "hot"
+                # Sort by (count descending, value ascending)
+                ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
             chosen = sorted(n for n, _ in ranked[:top_n])
             cache[target_date] = chosen
             return chosen
 
-        strategy.predict_special = MethodType(_top_hot_specials, strategy)
+        strategy.predict_special = MethodType(_top_frequency_specials, strategy)
+
+    def _apply_hot_specials(self, strategy: PredictModel, top_n: int, lookback_days: int) -> None:
+        """Backward-compatibility wrapper for _apply_frequency_specials(..., mode='hot')."""
+        self._apply_frequency_specials(strategy, top_n, lookback_days, mode="hot")
 
     # ------------------------------------------------------------------
     # ROI comparison table

@@ -12,7 +12,7 @@ Note
 Power 5/35 uses ``TPD = 2`` (two main-number tickets per draw) and is
 the only product where ``special_pick_required=True``.  Instead of
 wheeling through all 12 specials (which would yield ``2 × 12 = 24``
-tickets per draw), we set ``HOT_SPECIALS_TOP_N = 4`` so the base class
+tickets per draw), we set ``SPECIALS_TOP_N = 4`` so the base class
 overrides ``predict_special`` to return only the 4 most frequently
 drawn specials in the lookback window per draw date.  Effective cost
 becomes ``2 × 3 = 8`` tickets per draw.
@@ -48,13 +48,14 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     """Power 5/35 prediction summary generator."""
 
     PRODUCT_NAME: ClassVar[str] = "power_535"
-    TPD: ClassVar[int] = 2  # 2 mains × 3 hot specials = 6 tickets / draw
+    TPD: ClassVar[int] = 4  # 2 mains × 3 hot specials = 6 tickets / draw
     BEST_THRESHOLD: ClassVar[int] = 4
     OUTPUT_NAME: ClassVar[str] = "readme_535.md"
     PRODUCT_DISPLAY: ClassVar[str] = "Power 5/35"
     INCLUDES_SOLO_BASELINES: ClassVar[bool] = True
     INCLUDES_PATTERN_HYBRID: ClassVar[bool] = True
-    HOT_SPECIALS_TOP_N: ClassVar[int | None] = 6  # top-3 hot specials instead of wheeling 1..12
+    SPECIALS_TOP_N: ClassVar[int | None] = 4
+    SPECIALS_MODE: ClassVar[str] = "cold"  # Chọn các số đặc biệt ít về nhất
 
     # Jackpot-split threshold (see :mod:`vietlott.config.prizes`).
     DD_FILTER_ENABLED: ClassVar[bool] = True
