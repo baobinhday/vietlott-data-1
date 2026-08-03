@@ -28,7 +28,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import MethodType
-from typing import ClassVar, Dict, List, Optional, Tuple
+from typing import ClassVar, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import polars as pl
@@ -49,7 +49,7 @@ from machine_learning.strategies import (
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
-from vietlott.config.prizes import get_actual_prize_for_draw, get_prize_fn
+from vietlott.config.prizes import get_prize_fn
 from vietlott.config.products import get_config
 
 # (strategy_name, tickets_per_day, model_instance) after backtest+evaluate
@@ -78,12 +78,32 @@ class BasePowerPredictionSummaryGenerator:
     HOT_SPECIALS_TOP_N: ClassVar[Optional[int]] = None
     HOT_SPECIALS_LOOKBACK_DAYS: ClassVar[int] = 365
 
+    # ------------------------------------------------------------------
+    # "Special" mode: chỉ mua vé khi jackpot > DD_THRESHOLD
+    # ------------------------------------------------------------------
+    # Each subclass sets its own ``DD_THRESHOLD`` (12B for 5/35, 70B for
+    # 6/45, 200B for 6/55) and the ``JACKPOT_PRIZE_NAME`` used to look
+    # up the current jackpot value in ``data/<product>_prizes.jsonl``.
+    # Toggle ``DD_FILTER_ENABLED = True`` to restrict ticket purchases
+    # to draws whose jackpot strictly exceeds the threshold – the
+    # strategies, voters and lookback windows still see the full
+    # historical dataset, so the learning step is unaffected.
+    DD_FILTER_ENABLED: ClassVar[bool] = False
+    DD_THRESHOLD: ClassVar[int] = 0
+    DD_FILTER_OUTPUT_SUFFIX: ClassVar[str] = "_special"
+    DD_FILTER_DISPLAY_SUFFIX: ClassVar[str] = " (Special: chỉ chơi khi jackpot vượt ngưỡng)"
+    JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot"
+
     def __init__(self):
         self.config = get_config(self.PRODUCT_NAME)
         self.min_val = self.config.min_value
         self.max_val = self.config.max_value
         self.number_predict = self.config.size_output
         self.prize_fn = get_prize_fn(self.PRODUCT_NAME)
+        if self.DD_FILTER_ENABLED:
+            base = self.OUTPUT_NAME.removesuffix(".md")
+            self.OUTPUT_NAME = f"{base}{self.DD_FILTER_OUTPUT_SUFFIX}.md"
+            self.PRODUCT_DISPLAY = f"{self.PRODUCT_DISPLAY}{self.DD_FILTER_DISPLAY_SUFFIX}"
 
     # ------------------------------------------------------------------
     # Data loading
@@ -397,11 +417,22 @@ class BasePowerPredictionSummaryGenerator:
 
         Always calls ``apply_product_config`` and sets ``prize_fn`` so
         per-product special-number rules and prize tiers are honoured.
+
+        When :attr:`DD_FILTER_ENABLED` is ``True``, restricts every
+        strategy's ``backtest`` call to the set of draws whose jackpot
+        strictly exceeds :attr:`DD_THRESHOLD` via the ``draw_ids``
+        argument on :meth:`PredictModel.backtest`.  The full ``df_pd``
+        is still attached to every model so lookback / voter logic
+        continues to use every historical draw.
         """
         strategy_defs = self._build_strategy_defs(df_pd)
         tpd = self.TPD
         hot_top_n = self.HOT_SPECIALS_TOP_N
         apply_hot = hot_top_n is not None
+
+        eligible_ids: Set[str] | None = None
+        if self.DD_FILTER_ENABLED:
+            eligible_ids = self._load_eligible_draw_ids(pl.from_pandas(df_pd) if not df_pd.empty else pl.DataFrame())
 
         results: List[StrategyEntry] = []
         for name, model in strategy_defs:
@@ -410,11 +441,79 @@ class BasePowerPredictionSummaryGenerator:
             if apply_hot and model.special_pick_required:
                 self._apply_hot_specials(model, hot_top_n, self.HOT_SPECIALS_LOOKBACK_DAYS)
             logger.info(f"Running {name} on {self.PRODUCT_DISPLAY}...")
-            model.backtest(date_from=date_from, date_to=date_to)
+            model.backtest(
+                date_from=date_from,
+                date_to=date_to,
+                draw_ids=eligible_ids,
+            )
             model.evaluate()
             results.append((name, tpd, model))
 
         return results
+
+    def _load_eligible_draw_ids(self, df: pl.DataFrame) -> Set[str] | None:
+        """Return the set of draw ids whose jackpot > :attr:`DD_THRESHOLD`.
+
+        Reads ``data/<PRODUCT_FILE_STEM>_prizes.jsonl`` and extracts
+        the ``JACKPOT_PRIZE_NAME`` ``prize_value`` for every record,
+        keeping draws whose value strictly exceeds
+        :attr:`DD_THRESHOLD`.  Returns ``None`` (i.e. "all draws") when
+        the prize file is missing or contains no jackpot records – this
+        preserves the standard behaviour when prize data has not yet
+        been crawled.
+
+        Only consulted when :attr:`DD_FILTER_ENABLED` is ``True``.
+        """
+        # ``PRODUCT_NAME`` is the canonical "power_535" / "power_645" /
+        # "power_655" key; the on-disk prize file uses the un-scored
+        # form ("power535_prizes.jsonl", etc.).  Strip the underscore
+        # before composing the path.
+        file_stem = self.PRODUCT_NAME.replace("_", "")
+        prize_file = Path(__file__).resolve().parents[2] / "data" / f"{file_stem}_prizes.jsonl"
+        if not prize_file.exists():
+            logger.warning(
+                f"{self.PRODUCT_DISPLAY}: prize file not found at {prize_file}; running on all draws (no DD filter)."
+            )
+            return None
+
+        import json
+
+        eligible: Set[str] = set()
+        with prize_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
+                jackpot_value: int = 0
+                for p in rec.get("prizes", []):
+                    if p.get("prize_name") == self.JACKPOT_PRIZE_NAME:
+                        raw = str(p.get("prize_value", "0")).replace(".", "")
+                        try:
+                            jackpot_value = int(raw) if raw else 0
+                        except ValueError:
+                            jackpot_value = 0
+                        break
+                if jackpot_value > self.DD_THRESHOLD:
+                    draw_id = rec.get("id")
+                    if draw_id is not None:
+                        eligible.add(str(draw_id))
+
+        if not eligible:
+            logger.warning(
+                f"{self.PRODUCT_DISPLAY}: no draws with {self.JACKPOT_PRIZE_NAME} > "
+                f"{self.DD_THRESHOLD:,} VND; running on all draws."
+            )
+            return None
+
+        total_draws = df.height
+        logger.info(
+            f"{self.PRODUCT_DISPLAY}: {len(eligible)}/{total_draws} draws have "
+            f"{self.JACKPOT_PRIZE_NAME} > {self.DD_THRESHOLD:,} VND; backtest will only "
+            f"generate tickets for these (lookback windows still see the full "
+            f"{total_draws}-draw history)."
+        )
+        return eligible
 
     def _apply_hot_specials(self, strategy: PredictModel, top_n: int, lookback_days: int) -> None:
         """Replace ``strategy.predict_special`` with a top-N hot-frequency picker.
