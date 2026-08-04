@@ -46,6 +46,7 @@ class HybridPredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     DD_FILTER_ENABLED: ClassVar[bool] = True
     DD_THRESHOLD: ClassVar[int] = 280_000_000_000  # 200B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot 1"
+    INVERSE_HYBRID_TOP_K: ClassVar[int] = 16
 
 
 def main():
