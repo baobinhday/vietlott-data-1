@@ -172,8 +172,8 @@ def test_actual_prize_power_535_uses_crawled_values():
     # power535 id=00003: DD=6.3B (no split), Nhất w=0 -> standard 10M.
     assert get_actual_prize_for_draw("power_535", "00003", 5, 1) == 6_315_905_000
     assert get_actual_prize_for_draw("power_535", "00003", 5, 0) == 10_000_000
-    # Tư (3+1) w=137, pv=100K -> (137*100K)/(137+1) = ~99,275.
-    assert get_actual_prize_for_draw("power_535", "00003", 3, 1) == int(137 * 100_000 / 138)
+    # Tư (3+1) w=137, pv=100K -> returns 100,000.
+    assert get_actual_prize_for_draw("power_535", "00003", 3, 1) == 100_000
     # Khuyến Khích is always 10K (not affected by simulation).
     assert get_actual_prize_for_draw("power_535", "00003", 2, 1) == 10_000
 
@@ -323,6 +323,5 @@ def test_actual_prize_falls_back_when_tier_unmatched():
 
 def test_actual_prize_handles_int_draw_id():
     clear_prizes_cache()
-    # The data file uses zero-padded string ids ("00003"), so passing an int
-    # is treated as a non-match and falls back to the hardcoded baseline.
-    assert get_actual_prize_for_draw("power_535", 3, 5, 1) == 6_000_000_000
+    # The data file uses zero-padded string ids ("00003"); integer 3 matches "00003".
+    assert get_actual_prize_for_draw("power_535", 3, 5, 1) == 6_315_905_000

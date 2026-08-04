@@ -63,7 +63,7 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     SPECIALS_OFFSET_DRAWS: ClassVar[int] = 30  # Lùi 30 kỳ quay trước ngày hiện tại để bắt đầu lookback
 
     # Jackpot-split threshold (see :mod:`vietlott.config.prizes`).
-    DD_FILTER_ENABLED: ClassVar[bool] = True
+    DD_FILTER_ENABLED: ClassVar[bool] = False
     DD_THRESHOLD: ClassVar[int] = 15_000_000_000  # 12B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Giải Độc Đắc"
     
