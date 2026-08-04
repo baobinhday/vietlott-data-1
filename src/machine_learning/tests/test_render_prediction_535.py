@@ -146,7 +146,7 @@ class TestPower535PredictionSummaryGenerator:
 
         strat = ColdNumbersStrategy(df_pd, time_predict=1, min_val=1, max_val=35)
         strat.apply_product_config(generator.config)
-        generator._apply_frequency_specials(strat, top_n=4, lookback_days=365, mode="cold")
+        generator._apply_frequency_specials(strat, top_n=4, lookback_draws=365, mode="cold")
         picked = strat.predict_special(date(2025, 1, 1))
         # 1 and 2 appear only 1x, 3, 6, 8, 9, 10, 12 appear 0x. So cold should pick 0x or 1x numbers.
         assert 7 not in picked, f"special 7 (hottest, 15x) should NOT be picked, got {picked}"
@@ -159,7 +159,7 @@ class TestPower535PredictionSummaryGenerator:
         strategies = generator._build_and_run_strategies(df_pd)
 
         table_md = generator._roi_comparison_table(strategies)
-        assert "Strategy Performance Comparison (Power 5/35)" in table_md
+        assert f"Strategy Performance Comparison ({generator.PRODUCT_DISPLAY})" in table_md
         assert "| Rank | Strategy |" in table_md
 
     def test_yearly_breakdown_table(self):
@@ -206,7 +206,7 @@ class TestPower535PredictionSummaryGenerator:
         generator._load_lottery_data = lambda: df_pl
 
         summary = generator.generate_prediction_summary()
-        assert "# 🔮 Vietlott Power 5/35 Prediction Summary" in summary
+        assert f"# 🔮 Vietlott {generator.PRODUCT_DISPLAY} Prediction Summary" in summary
         assert "Prediction Models" in summary
 
     def test_save_prediction_summary(self, tmp_path):
@@ -219,4 +219,4 @@ class TestPower535PredictionSummaryGenerator:
 
         assert out_file.exists()
         content = out_file.read_text(encoding="utf-8")
-        assert "Power 5/35 Prediction Summary" in content
+        assert generator.PRODUCT_DISPLAY in content
