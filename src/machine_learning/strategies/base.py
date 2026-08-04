@@ -434,7 +434,10 @@ class PredictModel:
 
             return predicted
 
-        _df["predict_metadata"] = _df.apply(fn_apply, axis=1)
+        if _df.empty:
+            _df["predict_metadata"] = []
+        else:
+            _df["predict_metadata"] = _df.apply(fn_apply, axis=1)
         self.df_backtest = _df
 
     def evaluate(self):
@@ -448,13 +451,22 @@ class PredictModel:
         * ``count_correct_num`` – frequency distribution of main-match counts.
         """
         self.df_backtest_explode = self.df_backtest.explode(PredictModel.col_predict_metadata)
+        norm_df = pd.json_normalize(self.df_backtest_explode[PredictModel.col_predict_metadata])
         self.df_backtest_evaluate = pd.concat(
             [
                 self.df_backtest_explode.reset_index(drop=True),
-                pd.json_normalize(self.df_backtest_explode[PredictModel.col_predict_metadata]).reset_index(drop=True),
+                norm_df.reset_index(drop=True),
             ],
             axis="columns",
         )
+
+        for col, col_type in [
+            (PredictModel.col_correct, bool),
+            (PredictModel.col_main_match, int),
+            (PredictModel.col_special_match, int),
+        ]:
+            if col not in self.df_backtest_evaluate.columns:
+                self.df_backtest_evaluate[col] = pd.Series(dtype=col_type)
 
         return {
             "correct_time": self.df_backtest_evaluate[PredictModel.col_correct].sum(),

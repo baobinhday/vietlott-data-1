@@ -37,9 +37,10 @@ class Power645PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
 
     # "Special" mode: chỉ mua vé khi Jackpot > 70B (toggle True to enable).
     DD_FILTER_ENABLED: ClassVar[bool] = True
-    DD_THRESHOLD: ClassVar[int] = 110_000_000_000  # 78.8B VND
+    DD_THRESHOLD: ClassVar[int] = 70_000_000_000  # 78.8B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot"
 
+    INVERSE_HYBRID_TOP_K: ClassVar[int] = 25
 
 def main():
     """Main entry point for Power 6/45 prediction summary generation."""
