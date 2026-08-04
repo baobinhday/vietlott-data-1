@@ -181,15 +181,7 @@ export function Sidebar({
             onChange={(v) => updateNested("inverse", "topK", v)}
             min={5}
             max={50}
-            hint="Cold Numbers đề xuất top_k số, Steiner chọn numberPredict từ pool."
-          />
-          <NumberField
-            label="coverage"
-            value={config.inverse.coverage}
-            onChange={(v) => updateNested("inverse", "coverage", v)}
-            min={1}
-            max={20}
-            hint="Số cặp (T1, T2) Steiner dự phòng; timePredict xoay vòng."
+            hint="Cold Numbers đề xuất top_k số, Steiner chọn numberPredict từ pool. coverage = TPD (hard-coded trong Python)."
           />
         </ConfigSection>
 
