@@ -289,7 +289,15 @@ def _load_prizes_index(product: str) -> dict[str, dict[str, dict[str, int]]]:
             draw_id = record.get("id")
             if draw_id is None:
                 continue
-            index[str(draw_id)] = _normalize_prize_record(product, record)
+            raw_id = str(draw_id).strip()
+            norm = _normalize_prize_record(product, record)
+            index[raw_id] = norm
+            try:
+                val = int(raw_id)
+                index[str(val)] = norm
+                index[f"{val:05d}"] = norm
+            except ValueError:
+                pass
     return index
 
 
@@ -352,7 +360,14 @@ def get_actual_prize_for_draw(
         return fallback(main_match, special_match)
 
     index = _load_prizes_index(product)
-    prizes = index.get(str(draw_id))
+    draw_id_str = str(draw_id).strip()
+    prizes = index.get(draw_id_str)
+    if not prizes:
+        try:
+            val = int(draw_id_str)
+            prizes = index.get(str(val)) or index.get(f"{val:05d}")
+        except ValueError:
+            pass
     if not prizes:
         return fallback(main_match, special_match)
 
@@ -399,14 +414,17 @@ def get_actual_prize_for_draw(
     if dd is not None:
         dd_v = int(dd["prize_value"])
         dd_w = int(dd["winners_count"])
-        is_split = dd_v > POWER_535_SPLIT_THRESHOLD and dd_w == 0
+        nhi_info = prizes.get("Giải Nhì", {})
+        nhi_v = int(nhi_info.get("prize_value", 0))
+        is_split = (
+            dd_v > POWER_535_SPLIT_THRESHOLD
+            and dd_w == 0
+            and nhi_v > POWER_535_STANDARD_PV["Giải Nhì"]
+        )
 
     if not is_split or prize_name not in POWER_535_STANDARD_PV:
-        # Non-split (or no Độc Đắc info): use the data's prize_value
-        # with the +1 simulation.
-        if w == 0:
-            return pv
-        return int(w * pv / (w + 1))
+        # Non-split (or no Độc Đắc info): use the data's prize_value directly
+        return pv
 
     # Split case.  Build the hypothetical winners_count (with our +1)
     # and apply the redistribution rule.
