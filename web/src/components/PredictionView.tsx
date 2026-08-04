@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { BacktestConfig, Draw, PredictionResult, ProductName } from "@/lib/types";
 import { NumberBall, TicketNumbers } from "./NumberBall";
 
@@ -23,6 +24,45 @@ interface PredictionViewProps {
   latestDrawError: string | null;
 }
 
+interface EvResponse {
+  product: string;
+  display: string;
+  numTickets: number;
+  ticketPrice: number;
+  jackpotBase: number;
+  historySampleSize: number;
+  evPerTicket: number;
+  totalEv: number;
+  projection: {
+    expectedNextJackpot: number;
+    expectedRevenue: number;
+    expectedTickets: number;
+    avgTicketsLastN: number;
+    sampleSize: number;
+    confidence: "low" | "medium" | "high";
+    avgJackpotWinnersLastN: number;
+    expectedWinners: {
+      jackpot: number;
+      nhat: number;
+      nhi: number;
+      ba: number;
+      tu: number;
+      nam: number;
+      khuyen_khich: number;
+    };
+    splitMode: boolean;
+  };
+  breakdown: Array<{
+    tier: string;
+    displayName: string;
+    probability: number;
+    expectedPayout: number;
+    ev: number;
+    splitAdjusted: boolean;
+    expectedOtherWinners: number;
+  }>;
+}
+
 const fmtVnd = (n: number) => `${n.toLocaleString("vi-VN")} ₫`;
 
 export function PredictionView({
@@ -35,6 +75,50 @@ export function PredictionView({
   latestDrawLoading,
   latestDrawError,
 }: PredictionViewProps) {
+  const [ev, setEv] = useState<EvResponse | null>(null);
+  const [evLoading, setEvLoading] = useState(false);
+  const [evError, setEvError] = useState<string | null>(null);
+
+  // Fetch EV whenever a new prediction is available.
+  useEffect(() => {
+    if (!result) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEv(null);
+      setEvError(null);
+      return;
+    }
+    setEvLoading(true);
+    let cancelled = false;
+    setEvLoading(true);
+    setEvError(null);
+    (async () => {
+      try {
+        const res = await fetch("/api/ev", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product: product.name,
+            numTickets: result.tickets.length,
+            historyLimit: 10,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? `HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as EvResponse;
+        if (cancelled) return;
+        setEv(data);
+      } catch (e) {
+        if (!cancelled) setEvError(String(e));
+      } finally {
+        if (!cancelled) setEvLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [result, product.name]);
   if (loading) {
     return (
       <div className="panel p-12 text-center">
@@ -95,6 +179,13 @@ export function PredictionView({
         error={latestDrawError}
         hasSpecial={product.hasSpecial}
         compact
+      />
+
+      <EvPanel
+        ev={ev}
+        loading={evLoading}
+        error={evError}
+        numTickets={result.tickets.length}
       />
 
       <section className="panel p-4">
@@ -353,7 +444,6 @@ function ConfigSummary({ config }: { config: BacktestConfig }) {
         />
         <Row k="Steiner S(t,k,v)" v={`(${config.steiner.t}, ${config.steiner.k}, ${config.steiner.v})`} />
         <Row k="Inverse.topK" v={String(config.inverse.topK)} />
-        <Row k="Inverse.coverage" v={String(config.inverse.coverage)} />
         <Row k="Specials.topN" v={String(config.specials.topN)} />
         <Row k="Specials.mode" v={config.specials.mode} />
         <Row k="Specials.lookback" v={`${config.specials.lookbackDraws} kỳ`} />
@@ -373,5 +463,209 @@ function Row({ k, v }: { k: string; v: string }) {
       <span className="text-zinc-500">{k}</span>
       <span className="text-zinc-200 col-span-1 md:col-span-2">{v}</span>
     </>
+  );
+}
+
+// ---------- EV panel ----------
+
+function EvPanel({
+  ev,
+  loading,
+  error,
+  numTickets,
+}: {
+  ev: EvResponse | null;
+  loading: boolean;
+  error: string | null;
+  numTickets: number;
+}) {
+  if (loading) {
+    return (
+      <section className="panel p-4">
+        <h3 className="text-sm font-semibold tracking-tight mb-3">Ước lượng EV kỳ tới</h3>
+        <div className="text-sm text-zinc-500 italic">Đang tính toán dựa trên {numTickets} vé…</div>
+      </section>
+    );
+  }
+  if (error) {
+    return (
+      <section className="panel p-4">
+        <h3 className="text-sm font-semibold tracking-tight mb-3">Ước lượng EV kỳ tới</h3>
+        <div className="text-sm text-red-400">Lỗi: {error}</div>
+      </section>
+    );
+  }
+  if (!ev) return null;
+
+  const isPositive = ev.totalEv > 0;
+
+  // Recommendation thresholds (in VND per ticket, "gross" terms).
+  //   EV > 0          → strongly positive (split mode, J > 12B & no winner)
+  //   −5,000 < EV ≤ 0 → wait, getting close (J > 12B, but split may be partial)
+  //   EV ≤ −5,000     → no (no-split mode, Jackpot too small)
+  // Chosen to align with: no-split break-even is J ≈ 33.6B, and split-mode
+  // activation gives EV > +30K/vé.
+  const recommendation =
+    ev.evPerTicket > 0
+      ? { label: "NÊN MUA", tone: "good" as const, reason: "EV dương, có thể là split mode" }
+      : ev.evPerTicket > -5_000
+        ? {
+            label: "CHỜ THÊM",
+            tone: "amber" as const,
+            reason: "EV gần 0, Jackpot chưa đủ lớn để split",
+          }
+        : {
+            label: "KHÔNG MUA",
+            tone: "bad" as const,
+            reason: "EV âm nặng, Jackpot quá nhỏ (cần J > 12B + split)",
+          };
+
+  return (
+    <section className="panel p-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
+        <h3 className="text-sm font-semibold tracking-tight">Ước lượng EV kỳ tới</h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border font-semibold ${
+              recommendation.tone === "good"
+                ? "border-good/60 text-good bg-good/5"
+                : recommendation.tone === "amber"
+                  ? "border-amber-500/60 text-amber-300 bg-amber-500/5"
+                  : "border-bad/60 text-bad bg-bad/5"
+            }`}
+            title={recommendation.reason}
+          >
+            {recommendation.label}
+          </span>
+          {ev.projection.splitMode && (
+            <span
+              className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-amber-500/60 text-amber-300 bg-amber-500/5"
+              title="Jackpot dự kiến vượt 12B và không có người trúng → áp dụng split rule (1/3 Nhất, 1/6 mỗi Nhì/Ba/Tư/Năm)"
+            >
+              split mode
+            </span>
+          )}
+          <span
+            className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+              ev.projection.confidence === "high"
+                ? "border-good/40 text-good"
+                : ev.projection.confidence === "medium"
+                  ? "border-amber-500/40 text-amber-300"
+                  : "border-zinc-700 text-zinc-500"
+            }`}
+          >
+            độ tin cậy: {ev.projection.confidence}
+          </span>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-zinc-500 mb-3">
+        Jackpot dự kiến = J_cuối + 0.55 × E[doanh_thu]. E[doanh thu] = trung bình {ev.projection.sampleSize} kỳ gần nhất.
+        P(win) cố định theo tổ hợp 5/35 × 12 = 3.895.584 vé.
+        {ev.projection.splitMode && (
+          <>
+            {" "}
+            <span className="text-amber-300">
+              Split rule áp dụng: giải Nhất→Năm nhận thêm 1/6 (Nhất: 1/3) Jackpot chia đều; payout các tier này tăng mạnh.
+            </span>
+          </>
+        )}
+      </p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+        <Stat
+          label="Jackpot dự kiến"
+          value={fmtVnd(ev.projection.expectedNextJackpot)}
+          tone="amber"
+        />
+        <Stat
+          label="Vé bán ước lượng"
+          value={ev.projection.expectedTickets.toLocaleString("vi-VN")}
+        />
+        <Stat
+          label="EV / vé"
+          value={`${ev.evPerTicket >= 0 ? "+" : ""}${fmtVnd(Math.round(ev.evPerTicket))}`}
+          tone={isPositive ? "good" : "bad"}
+        />
+        <Stat
+          label={`Tổng EV (${ev.numTickets} vé)`}
+          value={`${ev.totalEv >= 0 ? "+" : ""}${fmtVnd(Math.round(ev.totalEv))}`}
+          tone={isPositive ? "good" : "bad"}
+        />
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th className="num">P(win)</th>
+              <th className="num">E[w khác]</th>
+              <th className="num">E[payout]</th>
+              <th className="num">EV / vé</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ev.breakdown.map((b) => (
+              <tr key={b.tier} className={b.splitAdjusted ? "bg-amber-500/5" : ""}>
+                <td>
+                  {b.displayName}
+                  {b.splitAdjusted && (
+                    <span className="ml-1.5 text-[9px] uppercase tracking-wider text-amber-400">
+                      split
+                    </span>
+                  )}
+                </td>
+                <td className="num font-mono">{b.probability.toExponential(2)}</td>
+                <td className="num font-mono text-zinc-500">
+                  {b.expectedOtherWinners.toLocaleString("vi-VN")}
+                </td>
+                <td className="num font-mono">{fmtVnd(b.expectedPayout)}</td>
+                <td
+                  className={`num font-mono ${b.ev >= 0 ? "text-good" : "text-bad"}`}
+                >
+                  {b.ev >= 0 ? "+" : ""}
+                  {fmtVnd(Math.round(b.ev * 100) / 100)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[10px] text-zinc-600 mt-2">
+        {ev.projection.splitMode
+          ? "Split mode: E[payout] tier Nhất→Năm đã cộng thêm 1/6 (hoặc 1/3 cho Nhất) × Jackpot dự kiến, chia cho số người trúng trung bình +1 (gồm ta)."
+          : "Chế độ thường: payout tier Nhất→Năm theo bảng cố định (10M/5M/500K/100K/30K)."}
+        {ev.projection.avgJackpotWinnersLastN > 0
+          ? ` Trung bình ${ev.projection.avgJackpotWinnersLastN} người trúng Jackpot / kỳ (gần đây).`
+          : " Chưa có kỳ nào gần đây có người trúng Jackpot → payout Jackpot ước lượng có thể rất lớn."}
+      </p>
+    </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone = "muted",
+}: {
+  label: string;
+  value: string;
+  tone?: "muted" | "amber" | "good" | "bad";
+}) {
+  const color =
+    tone === "amber"
+      ? "text-amber-300"
+      : tone === "good"
+        ? "text-good"
+        : tone === "bad"
+          ? "text-bad"
+          : "text-zinc-200";
+  return (
+    <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-2.5">
+      <div className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className={`text-sm font-bold font-mono mt-0.5 ${color}`}>{value}</div>
+    </div>
   );
 }

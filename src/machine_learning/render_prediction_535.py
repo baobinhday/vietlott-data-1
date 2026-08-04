@@ -48,7 +48,7 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     """Power 5/35 prediction summary generator."""
 
     PRODUCT_NAME: ClassVar[str] = "power_535"
-    TPD: ClassVar[int] = 4  # 2 mains × 3 hot specials = 6 tickets / draw
+    TPD: ClassVar[int] = 2  # 2 mains × 3 hot specials = 6 tickets / draw
     BEST_THRESHOLD: ClassVar[int] = 3
     OUTPUT_NAME: ClassVar[str] = "readme_535.md"
     PRODUCT_DISPLAY: ClassVar[str] = "Power 5/35"
@@ -57,7 +57,7 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     SPECIALS_TOP_N: ClassVar[int | None] = 4
     # Chế độ chọn số đặc biệt: "hot", "cold", "long_absence", "markov_steiner", "intersection_la_mc"
     SPECIALS_MODE: ClassVar[str] = (
-        "markov_steiner"  # Khuyến nghị: "intersection_la_mc" (Top 1 cho dàn 4 số) hoặc "markov_steiner"
+        "long_absence"  # Khuyến nghị: "intersection_la_mc" (Top 1 cho dàn 4 số) hoặc "markov_steiner"
     )
     SPECIALS_LOOKBACK_DRAWS: ClassVar[int] = 60  # Cửa sổ lookback 60 kỳ quay
     SPECIALS_OFFSET_DRAWS: ClassVar[int] = 30  # Lùi 30 kỳ quay trước ngày hiện tại để bắt đầu lookback
