@@ -71,6 +71,7 @@ class BasePowerPredictionSummaryGenerator:
     PRODUCT_DISPLAY: ClassVar[str] = "Power 6/55"
     INCLUDES_SOLO_BASELINES: ClassVar[bool] = False
     INCLUDES_PATTERN_HYBRID: ClassVar[bool] = False
+    INVERSE_HYBRID_TOP_K: ClassVar[int] = 15
     # When set, override ``predict_special`` on every strategy to return only the
     # top-N most frequent special numbers in the lookback window (per-draw),
     # instead of wheeling through all of them.  Used by Power 5/35 to buy 2×4
@@ -316,6 +317,7 @@ class BasePowerPredictionSummaryGenerator:
                 )
             )
 
+        inv_top_k = self.INVERSE_HYBRID_TOP_K
         defs.extend(
             [
                 (
@@ -323,7 +325,7 @@ class BasePowerPredictionSummaryGenerator:
                     InverseHybridStrategy(
                         proposer=self._make_voter(PairFrequencyStrategy, df_pd, tpd, lookback_days=365),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -335,7 +337,7 @@ class BasePowerPredictionSummaryGenerator:
                             HotNumbersStrategy, df_pd, tpd, lookback_days=365, selection_weight=0.7
                         ),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -347,7 +349,7 @@ class BasePowerPredictionSummaryGenerator:
                             ColdNumbersStrategy, df_pd, tpd, lookback_days=365, selection_weight=0.7
                         ),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -355,9 +357,9 @@ class BasePowerPredictionSummaryGenerator:
                 (
                     "Inverse Hybrid: Long Absence → Steiner (cov 3)",
                     InverseHybridStrategy(
-                        proposer=self._make_voter(LongAbsenceStrategy, df_pd, tpd, top_n=15),
+                        proposer=self._make_voter(LongAbsenceStrategy, df_pd, tpd, top_n=inv_top_k),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -367,7 +369,7 @@ class BasePowerPredictionSummaryGenerator:
                     InverseHybridStrategy(
                         proposer=self._make_voter(NotRepeatStrategy, df_pd, tpd, lookback_days=30, avoid_weight=0.8),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -384,7 +386,7 @@ class BasePowerPredictionSummaryGenerator:
                             selection_weight=0.8,
                         ),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -394,7 +396,7 @@ class BasePowerPredictionSummaryGenerator:
                     InverseHybridStrategy(
                         proposer=self._make_voter(MarkovChainStrategy, df_pd, tpd, lookback_days=365, smoothing=0.5),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -404,7 +406,7 @@ class BasePowerPredictionSummaryGenerator:
                     InverseHybridStrategy(
                         proposer=self._make_voter(PatternStrategy, df_pd, tpd, lookback_days=180, pattern_weight=0.6),
                         steiner=steiner_strategy,
-                        top_k=15,
+                        top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
                     ),
@@ -514,6 +516,14 @@ class BasePowerPredictionSummaryGenerator:
                 f"{self.DD_THRESHOLD:,} VND; running on all draws."
             )
             return None
+
+        if not df.is_empty() and "id" in df.columns:
+            df_ids = set(df["id"].cast(pl.String).to_list())
+            if not (df_ids & eligible):
+                logger.warning(
+                    f"{self.PRODUCT_DISPLAY}: no dataset draw IDs match eligible jackpot draws; running on all draws."
+                )
+                return None
 
         total_draws = df.height
         logger.info(
