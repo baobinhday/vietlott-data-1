@@ -59,6 +59,7 @@ from .exponential_decay import ExponentialDecayStrategy
 from .frequency import ColdNumbersStrategy, FrequencyStrategy, HotNumbersStrategy
 from .hybrid import HybridStrategy
 from .inverse_hybrid import InverseHybridStrategy
+from .inverse_hybrid_trio import InverseHybridTrioStrategy
 from .long_absence import LongAbsenceStrategy
 from .markov_chain import MarkovChainStrategy
 from .not_repeat import NotRepeatStrategy
@@ -82,4 +83,5 @@ __all__ = [
     "SteinerStrategy",
     "HybridStrategy",
     "InverseHybridStrategy",
+    "InverseHybridTrioStrategy",
 ]
