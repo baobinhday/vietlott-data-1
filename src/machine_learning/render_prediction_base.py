@@ -40,6 +40,7 @@ from machine_learning.strategies import (
     HotNumbersStrategy,
     HybridStrategy,
     InverseHybridStrategy,
+    InverseHybridTrioStrategy,
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
@@ -409,6 +410,15 @@ class BasePowerPredictionSummaryGenerator:
                         top_k=inv_top_k,
                         coverage=tpd,
                         time_predict=tpd,
+                    ),
+                ),
+                (
+                    "Inverse Hybrid: Trio (Cold + PairFreq + Pattern)",
+                    InverseHybridTrioStrategy(
+                        df_pd,
+                        steiner=steiner_strategy,
+                        top_k=15,
+                        time_predict=6,
                     ),
                 ),
             ]
