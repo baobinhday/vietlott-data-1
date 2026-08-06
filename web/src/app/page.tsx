@@ -73,8 +73,31 @@ interface ProductShellProps {
 function ProductShell({ products, product, onProductChange }: ProductShellProps) {
   const productInfo = useMemo(() => products.find((p) => p.name === product)!, [products, product]);
   const [config, setConfig] = useState<BacktestConfig>(productInfo.defaultConfig);
-  const [strategy] = useState<string>("Inverse Hybrid: Cold Numbers → Steiner");
+  const [strategy, setStrategy] = useState<string>("Inverse Hybrid: Cold Numbers → Steiner");
   const [tab, setTab] = useState<"backtest" | "prediction">("prediction");
+
+  const handleStrategyChange = (newStrat: string) => {
+    setStrategy(newStrat);
+    if (newStrat === "Inverse Hybrid: Trio (Cold + PairFreq + Pattern)") {
+      setConfig((prev) => ({
+        ...prev,
+        tpd: 6,
+        specials: {
+          ...prev.specials,
+          topN: 4,
+        },
+      }));
+    } else {
+      setConfig((prev) => ({
+        ...prev,
+        tpd: 2,
+        specials: {
+          ...prev.specials,
+          topN: 4,
+        },
+      }));
+    }
+  };
 
   const [latestDraw, setLatestDraw] = useState<Draw | null>(null);
   const [latestDrawLoading, setLatestDrawLoading] = useState(true);
@@ -124,7 +147,7 @@ function ProductShell({ products, product, onProductChange }: ProductShellProps)
       const res = await fetch("/api/backtest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product, config }),
+        body: JSON.stringify({ product, config: { ...config, strategy } }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -147,7 +170,7 @@ function ProductShell({ products, product, onProductChange }: ProductShellProps)
       const res = await fetch("/api/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product, config }),
+        body: JSON.stringify({ product, config: { ...config, strategy } }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -169,6 +192,7 @@ function ProductShell({ products, product, onProductChange }: ProductShellProps)
         product={product}
         onProductChange={onProductChange}
         strategy={strategy}
+        onStrategyChange={handleStrategyChange}
         config={config}
         onConfigChange={setConfig}
         onRunBacktest={runBacktest}
