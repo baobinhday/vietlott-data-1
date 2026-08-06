@@ -19,6 +19,7 @@ interface SidebarProps {
   product: ProductName;
   onProductChange: (p: ProductName) => void;
   strategy: string;
+  onStrategyChange?: (s: string) => void;
   config: BacktestConfig;
   onConfigChange: (cfg: BacktestConfig) => void;
   onRunBacktest: () => void;
@@ -40,6 +41,7 @@ export function Sidebar({
   product,
   onProductChange,
   strategy,
+  onStrategyChange,
   config,
   onConfigChange,
   onRunBacktest,
@@ -50,21 +52,18 @@ export function Sidebar({
   const update = (key: keyof BacktestConfig, value: BacktestConfig[keyof BacktestConfig]) => {
     onConfigChange({ ...config, [key]: value });
   };
-  type ObjectSectionKey = {
-    [K in keyof BacktestConfig]: BacktestConfig[K] extends Record<string, unknown> ? K : never;
-  }[keyof BacktestConfig];
-  const updateNested = <S extends ObjectSectionKey>(
-    section: S,
-    field: keyof BacktestConfig[S] & string,
-    value: BacktestConfig[S][keyof BacktestConfig[S] & string],
+  const updateNested = (
+    section: keyof BacktestConfig,
+    field: string,
+    value: any,
   ) => {
     const next: BacktestConfig = {
       ...config,
       [section]: {
-        ...(config[section] as Record<string, unknown>),
+        ...(config[section] as Record<string, any>),
         [field]: value,
-      } as BacktestConfig[S],
-    } as BacktestConfig;
+      },
+    } as any;
     onConfigChange(next);
   };
 
@@ -72,7 +71,7 @@ export function Sidebar({
     <aside className="w-80 shrink-0 border-r border-zinc-800 bg-zinc-950 flex flex-col min-h-0">
       <header className="p-4 border-b border-zinc-800">
         <h1 className="text-base font-bold tracking-tight text-amber-400">Vietlott Lab</h1>
-        <p className="text-[11px] text-zinc-500 mt-1">Backtest & dự đoán với Inverse Hybrid: Cold → Steiner</p>
+        <p className="text-[11px] text-zinc-500 mt-1">Backtest & dự đoán các chiến thuật Vietlott</p>
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -93,11 +92,21 @@ export function Sidebar({
           </div>
         </ConfigSection>
 
-        <ConfigSection title="Chiến thuật" defaultOpen badge="1/1">
+        <ConfigSection title="Chiến thuật" defaultOpen badge="2/2">
           <div>
             <label className="field-label">Chiến thuật</label>
-            <input className="field-input bg-zinc-900 cursor-not-allowed" value={strategy} readOnly />
-            <p className="text-[10px] text-zinc-500 mt-1">Hiện tại chỉ hỗ trợ 1 chiến thuật.</p>
+            <select
+              className="field-input"
+              value={strategy}
+              onChange={(e) => onStrategyChange?.(e.target.value)}
+            >
+              <option value="Inverse Hybrid: Cold Numbers → Steiner">
+                Inverse Hybrid: Cold Numbers → Steiner
+              </option>
+              <option value="Inverse Hybrid: Trio (Cold + PairFreq + Pattern)">
+                Inverse Hybrid: Trio (Cold + PairFreq + Pattern)
+              </option>
+            </select>
           </div>
           <NumberField
             label="TPD (tickets / draw)"
