@@ -111,7 +111,7 @@ def _lookup_prize_name(product: str, main_match: int, special_match: int) -> str
     for m, s, name in PRIZE_NAME_MAP.get(product, []):
         if m == main_match and s == special_match:
             return name
-    if product == "power_535" and special_match == 1 and 1 <= main_match <= 2:
+    if product == "power_535" and special_match == 1 and 0 <= main_match <= 2:
         return _POWER_535_CONSOLATION_NAMES[0]
     return None
 
@@ -158,7 +158,7 @@ def _prize_for_power_535(main_match: int, special_match: int) -> int:
         return 100_000  # Giải Tư
     if main_match == 3:
         return 30_000  # Giải Năm
-    if special_match == 1 and main_match >= 1:
+    if special_match == 1 and main_match >= 0:
         return 10_000  # Giải Khuyến khích
     return 0
 
