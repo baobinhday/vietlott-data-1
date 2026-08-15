@@ -42,6 +42,7 @@ class Power645PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
 
     INVERSE_HYBRID_TOP_K: ClassVar[int] = 25
 
+
 def main():
     """Main entry point for Power 6/45 prediction summary generation."""
     generator = Power645PredictionSummaryGenerator()
