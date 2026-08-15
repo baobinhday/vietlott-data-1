@@ -416,11 +416,7 @@ def get_actual_prize_for_draw(
         dd_w = int(dd["winners_count"])
         nhi_info = prizes.get("Giải Nhì", {})
         nhi_v = int(nhi_info.get("prize_value", 0))
-        is_split = (
-            dd_v > POWER_535_SPLIT_THRESHOLD
-            and dd_w == 0
-            and nhi_v > POWER_535_STANDARD_PV["Giải Nhì"]
-        )
+        is_split = dd_v > POWER_535_SPLIT_THRESHOLD and dd_w == 0 and nhi_v > POWER_535_STANDARD_PV["Giải Nhì"]
 
     if not is_split or prize_name not in POWER_535_STANDARD_PV:
         # Non-split (or no Độc Đắc info): use the data's prize_value directly

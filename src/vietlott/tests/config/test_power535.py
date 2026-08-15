@@ -41,9 +41,9 @@ def test_power535_config():
     # Test instantiation
     instance = product_class()
     assert instance.name == "power_535", f"Expected instance name 'power_535', got '{instance.name}'"
-    assert "Game535CompareWebPart" in instance.url, (
-        f"Expected URL to contain 'Game535CompareWebPart', got '{instance.url}'"
-    )
+    assert (
+        "Game535CompareWebPart" in instance.url
+    ), f"Expected URL to contain 'Game535CompareWebPart', got '{instance.url}'"
     assert "result" in instance.stored_data_dtype, "Expected 'result' field in stored_data_dtype"
     assert len(instance.stored_data_dtype) >= 4, (
         f"Expected at least 4 data type fields, got {len(instance.stored_data_dtype)}"
