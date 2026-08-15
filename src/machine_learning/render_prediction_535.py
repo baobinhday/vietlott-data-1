@@ -66,9 +66,8 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     DD_FILTER_ENABLED: ClassVar[bool] = True
     DD_THRESHOLD: ClassVar[int] = 16_000_000_000  # 12B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Giải Độc Đắc"
-    
+
     INVERSE_HYBRID_TOP_K: ClassVar[int] = 15
-    
 
 
 def main():

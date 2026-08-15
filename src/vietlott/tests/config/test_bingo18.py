@@ -41,9 +41,9 @@ def test_bingo18_config():
     # Test instantiation
     instance = product_class()
     assert instance.name == "bingo18", f"Expected instance name 'bingo18', got '{instance.name}'"
-    assert "GameBingoCompareWebPart" in instance.url, (
-        f"Expected URL to contain 'GameBingoCompareWebPart', got '{instance.url}'"
-    )
+    assert (
+        "GameBingoCompareWebPart" in instance.url
+    ), f"Expected URL to contain 'GameBingoCompareWebPart', got '{instance.url}'"
     assert "result" in instance.stored_data_dtype, "Expected 'result' field in stored_data_dtype"
     assert len(instance.stored_data_dtype) >= 5, (
         f"Expected at least 5 data type fields, got {len(instance.stored_data_dtype)}"
