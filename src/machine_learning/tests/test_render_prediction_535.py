@@ -83,9 +83,9 @@ class TestPower535PredictionSummaryGenerator:
             expected_full = draws * tpd * 4
             # First draw uses the full [1..12] fallback → +tpd×8 extra rows.
             # Allow a small slack for that.
-            assert rows <= expected_full + tpd * 8, (
-                f"{name}: too many rows ({rows}), expected ≤ {expected_full + tpd * 8}"
-            )
+            assert (
+                rows <= expected_full + tpd * 8
+            ), f"{name}: too many rows ({rows}), expected ≤ {expected_full + tpd * 8}"
             # And we should have a clear reduction from the old 24-per-draw
             # baseline.
             old_baseline = draws * tpd * 12

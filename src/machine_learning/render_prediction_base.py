@@ -25,7 +25,7 @@ Side benefits
 """
 
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from types import MethodType
 from typing import ClassVar, Dict, List, Optional, Set, Tuple
