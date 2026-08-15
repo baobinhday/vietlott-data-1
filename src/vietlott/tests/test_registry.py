@@ -12,7 +12,6 @@ Covers:
 import json
 import random
 from datetime import date, timedelta
-from typing import List
 
 import pandas as pd
 import pytest
@@ -335,9 +334,12 @@ class TestRegistryIntegrity:
         strategies = list_strategies()
         for s in strategies:
             for p in s["params"]:
-                assert p["type"] in ("int", "float", "bool", "str"), (
-                    f"{s['key']}.{p['name']}: unexpected type '{p['type']}'"
-                )
+                assert p["type"] in (
+                    "int",
+                    "float",
+                    "bool",
+                    "str",
+                ), f"{s['key']}.{p['name']}: unexpected type '{p['type']}'"
         print("OK: all param types are valid")
 
 

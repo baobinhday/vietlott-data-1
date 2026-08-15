@@ -295,9 +295,9 @@ class TestGenerateTickets:
             "ticket_count": 30,
         }
         result = generate_tickets(pipeline, target_date=date(2024, 6, 15))
-        assert len(result["tickets"]) == 30, (
-            f"Expected 30 tickets, got {len(result['tickets'])} — Steiner chain failed to fall back to random"
-        )
+        assert (
+            len(result["tickets"]) == 30
+        ), f"Expected 30 tickets, got {len(result['tickets'])} — Steiner chain failed to fall back to random"
         # All 30 must be distinct
         unique = {tuple(t) for t in result["tickets"]}
         assert len(unique) == 30, f"Expected 30 unique tickets, got {len(unique)}"
@@ -432,7 +432,7 @@ class TestRunBacktest:
             assert isinstance(ts, list), "tickets should be a list"
             assert len(ts) >= 1, "tickets should have at least one ticket"
             for t in ts:
-                assert isinstance(t, list) and len(t) == 6, f"Each ticket in tickets should have 6 numbers"
+                assert isinstance(t, list) and len(t) == 6, "Each ticket in tickets should have 6 numbers"
                 assert all(isinstance(n, int) for n in t)
 
     def test_per_draw_tickets_with_ticket_count_3(self):
