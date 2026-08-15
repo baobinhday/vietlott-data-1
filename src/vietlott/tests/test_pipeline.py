@@ -102,9 +102,9 @@ def _assert_valid_ticket(ticket: List[int], model: PredictModel) -> None:
     assert isinstance(ticket, list), "Ticket must be a list"
     assert len(ticket) == model.number_predict, f"Expected {model.number_predict} numbers, got {len(ticket)}"
     assert len(set(ticket)) == model.number_predict, "Ticket numbers must be distinct"
-    assert all(model.min_val <= n <= model.max_val for n in ticket), (
-        f"All numbers must be in [{model.min_val}, {model.max_val}]"
-    )
+    assert all(
+        model.min_val <= n <= model.max_val for n in ticket
+    ), f"All numbers must be in [{model.min_val}, {model.max_val}]"
     assert ticket == sorted(ticket), "Ticket must be sorted"
 
 
@@ -254,7 +254,7 @@ class TestGenerateTickets:
         # Must be distinct.
         unique = {tuple(t) for t in tickets}
         assert len(unique) == 3, "Tickets must be distinct"
-        print(f"OK: generate_tickets returned 3 distinct tickets")
+        print("OK: generate_tickets returned 3 distinct tickets")
 
     def test_ticket_count_default(self, df):
         spec = _base_spec()
@@ -379,7 +379,7 @@ class TestPostFilters:
             loguru_logger.remove(sink_id)
 
         assert any("best-effort" in str(m) for m in captured_messages), "Expected warning about best-effort ticket"
-        print(f"OK: impossible post-filter logged warning and returned ticket")
+        print("OK: impossible post-filter logged warning and returned ticket")
 
     def test_even_odd_filter(self, df):
         """Filter: at least 2 even numbers, at most 4 odd numbers."""

@@ -93,9 +93,9 @@ def _assert_valid_prediction(pred, model: PredictModel):
     assert isinstance(pred, list), "predict() must return a list"
     assert len(pred) == model.number_predict, f"Expected {model.number_predict} numbers, got {len(pred)}"
     assert len(set(pred)) == model.number_predict, "Predicted numbers must be distinct"
-    assert all(model.min_val <= n <= model.max_val for n in pred), (
-        f"All numbers must be in [{model.min_val}, {model.max_val}]"
-    )
+    assert all(
+        model.min_val <= n <= model.max_val for n in pred
+    ), f"All numbers must be in [{model.min_val}, {model.max_val}]"
     assert pred == sorted(pred), "Predicted numbers must be sorted"
 
 
@@ -578,9 +578,9 @@ class TestProposeTopNumbers:
             lambda d: MarkovChainStrategy(d, time_predict=1, lookback_days=90),
         ]:
             pool = factory(df).propose_top_numbers(target, 12)
-            assert pool == sorted(pool), (
-                f"{factory.__name__ if hasattr(factory, '__name__') else factory} returned unsorted pool"
-            )
+            assert pool == sorted(
+                pool
+            ), f"{factory.__name__ if hasattr(factory, '__name__') else factory} returned unsorted pool"
 
 
 # ---------------------------------------------------------------------------
@@ -984,9 +984,9 @@ class TestSteinerCustomSystem:
                 pairs_covered.add(pair)
         # Full S(2, 3, 35) would cover C(35, 2) = 595 pairs.
         # The partial greedy system covers a smaller subset.
-        assert 0 < len(pairs_covered) < 595, (
-            f"Partial S(2,3,35) should cover some but not all pairs, got {len(pairs_covered)}"
-        )
+        assert (
+            0 < len(pairs_covered) < 595
+        ), f"Partial S(2,3,35) should cover some but not all pairs, got {len(pairs_covered)}"
         # All triples still have 3 sorted distinct elements in [1, 35].
         for b in model._blocks:
             assert len(b) == 3
