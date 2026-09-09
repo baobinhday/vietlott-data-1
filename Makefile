@@ -34,6 +34,9 @@ pypi: build
 	@echo "Publishing..."
 	$(UV) run python -m twine upload --repository testpypi dist/*
 
+run-dev: .venv
+	uv run uvicorn vietlott.web_api.app:app --reload --host 0.0.0.0 --port 9000
+
 run-crawl: .venv
 	@echo "Running crawl scripts..."
 	LOGURU_LEVEL=$(LOGURU_LEVEL) PYTHONPATH=src $(UV) run python src/vietlott/cli/crawl.py keno
