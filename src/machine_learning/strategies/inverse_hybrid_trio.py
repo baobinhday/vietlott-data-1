@@ -1,8 +1,10 @@
 from typing import List
+
 import pandas as pd
+
 from machine_learning.strategies.base import PredictModel
-from machine_learning.strategies.inverse_hybrid import InverseHybridStrategy
 from machine_learning.strategies.frequency import ColdNumbersStrategy
+from machine_learning.strategies.inverse_hybrid import InverseHybridStrategy
 from machine_learning.strategies.pair_frequency import PairFrequencyStrategy
 from machine_learning.strategies.pattern import PatternStrategy
 from machine_learning.strategies.steiner import SteinerStrategy
