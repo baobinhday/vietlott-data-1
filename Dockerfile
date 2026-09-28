@@ -1,24 +1,10 @@
 # =============================================================================
-# Stage 1 — Frontend build (Vite + TypeScript)
+# Stage 1 — Python runtime (API-only mode)
 # =============================================================================
-FROM node:20-alpine AS builder
-
-WORKDIR /app/web
-
-# Install dependencies first (cache-friendly)
-# No package-lock.json in this project, so `npm install` is used.
-# If a lockfile is added in the future, add a COPY for it and switch to:
-#   RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-COPY web/package.json ./
-RUN npm install
-
-# Copy the rest of the frontend source and build
-COPY web/ .
-RUN npm run build
-
-# =============================================================================
-# Stage 2 — Python runtime
-# =============================================================================
+# Note: the Next.js frontend in web/ is a full-stack app (server-side API
+# routes reading data/ via node:fs) and cannot be baked as a static SPA into
+# this image. Run it separately with `make run-web`. This image serves the
+# FastAPI backend in API-only mode.
 FROM python:3.11-slim
 
 # Install uv package manager
@@ -38,9 +24,6 @@ RUN uv sync --extra web --no-dev --frozen
 
 # Copy application source code
 COPY src/ ./src/
-
-# Copy built frontend from Stage 1
-COPY --from=builder /app/web/dist /app/web/dist
 
 # Mount point for runtime data (mounted read-only via compose)
 RUN mkdir -p /app/data && chown appuser:appgroup /app/data
