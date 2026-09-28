@@ -295,9 +295,9 @@ class TestGenerateTickets:
             "ticket_count": 30,
         }
         result = generate_tickets(pipeline, target_date=date(2024, 6, 15))
-        assert (
-            len(result["tickets"]) == 30
-        ), f"Expected 30 tickets, got {len(result['tickets'])} — Steiner chain failed to fall back to random"
+        assert len(result["tickets"]) == 30, (
+            f"Expected 30 tickets, got {len(result['tickets'])} — Steiner chain failed to fall back to random"
+        )
         # All 30 must be distinct
         unique = {tuple(t) for t in result["tickets"]}
         assert len(unique) == 30, f"Expected 30 unique tickets, got {len(unique)}"
