@@ -6,7 +6,7 @@ LOGURU_LEVEL := INFO
 export
 
 all: lint test
-.PHONY: all requirements-dev test lint build pypi run-crawl run-missing docker-build docker-up docker-down docker-logs
+.PHONY: all requirements-dev test lint build build-web run-web dev-web pypi run-dev run-crawl run-crawl-prizes run-missing docker-build docker-up docker-down docker-logs
 
 .venv:
 	@echo "Initializing virtual environment..."
@@ -14,12 +14,11 @@ all: lint test
 
 requirements-dev: .venv
 	@echo "Generating & installing dev requirements..."
-	$(UV) run pip compile --extra dev pyproject.toml > requirements-dev.txt
-	$(UV) run pip install -r requirements-dev.txt
-	$(UV) run pip install -e .
+	$(UV) sync --extra dev --extra web
+	@echo "Done. Dev + web deps installed via uv sync."
 
 test:
-	$(UV) run pytest src/vietlott/tests
+	$(UV) run --extra dev --extra web pytest src/vietlott/tests
 
 lint: .venv
 	@echo "Linting..."
@@ -34,8 +33,17 @@ pypi: build
 	@echo "Publishing..."
 	$(UV) run python -m twine upload --repository testpypi dist/*
 
-run-dev: .venv
-	uv run uvicorn vietlott.web_api.app:app --reload --host 0.0.0.0 --port 9000
+run-dev: ## Run the FastAPI web API (requires uv sync --extra web)
+	uv run --extra web uvicorn vietlott.web_api.app:app --reload --host 0.0.0.0 --port 9000
+
+build-web: ## Build the Next.js web frontend (web/)
+	cd web && pnpm install --frozen-lockfile && pnpm build
+
+run-web: ## Start the built Next.js web app on :3456 (requires build-web)
+	cd web && pnpm start
+
+dev-web: ## Run the Next.js web app in dev mode on :3456
+	cd web && pnpm dev
 
 run-crawl: .venv
 	@echo "Running crawl scripts..."
