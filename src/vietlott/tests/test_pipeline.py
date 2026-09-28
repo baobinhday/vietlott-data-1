@@ -102,9 +102,9 @@ def _assert_valid_ticket(ticket: List[int], model: PredictModel) -> None:
     assert isinstance(ticket, list), "Ticket must be a list"
     assert len(ticket) == model.number_predict, f"Expected {model.number_predict} numbers, got {len(ticket)}"
     assert len(set(ticket)) == model.number_predict, "Ticket numbers must be distinct"
-    assert all(
-        model.min_val <= n <= model.max_val for n in ticket
-    ), f"All numbers must be in [{model.min_val}, {model.max_val}]"
+    assert all(model.min_val <= n <= model.max_val for n in ticket), (
+        f"All numbers must be in [{model.min_val}, {model.max_val}]"
+    )
     assert ticket == sorted(ticket), "Ticket must be sorted"
 
 
