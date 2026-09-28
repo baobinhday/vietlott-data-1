@@ -22,6 +22,8 @@ dependencies = [
     "requests",
     "tabulate",
     "loguru",
+    "numpy",
+    "pandas",
 ]
 requires-python = ">=3.11,<3.14"
 readme = "README.md"
@@ -33,8 +35,7 @@ Issues = "https://github.com/vietvudanh/vietlott-data/issues"
 
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "build", "setuptools", "wheel", "twine", "pre-commit"]
-ml = ["numpy", "scikit-learn", "matplotlib", "pandas"]
+dev = ["pytest", "ruff", "build", "setuptools", "wheel", "twine", "pre-commit", "numpy", "matplotlib", "httpx2"]
 web = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "pydantic>=2.0", "pandas>=2.0"]
 
 [project.scripts]
