@@ -150,6 +150,299 @@ class BacktestRequest(BaseModel):
     ticket_count: int | None = None  # None → use pipeline.ticket_count
 
 
+# ---------------------------------------------------------------------------
+# GET /api/draws + POST /api/backtest/strategy (Phase 2)
+# NOTE: request/response field names use camelCase aliases to match the
+# TypeScript ``BacktestConfig`` / ``PredictionResult`` contract in
+# ``web/src/lib/types.ts``.  snake_case is accepted on input.
+# ---------------------------------------------------------------------------
+
+
+def _to_camel(snake: str) -> str:
+    """Convert a snake_case identifier to camelCase (``date_from`` → ``dateFrom``)."""
+    parts = snake.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+class CamelModel(BaseModel):
+    """Base model accepting AND emitting camelCase field names.
+
+    snake_case population is enabled (``populate_by_name``) so both
+    ``lookbackDays`` and ``lookback_days`` are accepted; responses are
+    always serialized with ``model_dump(by_alias=True)``.
+    """
+
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+
+
+class ColdStrategyConfig(CamelModel):
+    """ColdNumbersStrategy tuning (mirrors ``BacktestConfig.cold``)."""
+
+    lookback_days: int = 365
+    selection_weight: float = 0.7
+
+
+class SteinerStrategyConfig(CamelModel):
+    """SteinerStrategy tuning (mirrors ``BacktestConfig.steiner``)."""
+
+    lookback_days: int = 365
+    filter_consecutive: bool = True
+    filter_same_decade: bool = True
+    t: int = 2
+    k: int = 3
+    v: int | None = None
+
+
+class InverseStrategyConfig(CamelModel):
+    """InverseHybridStrategy tuning (mirrors ``BacktestConfig.inverse``)."""
+
+    top_k: int = 15
+
+
+class SpecialsStrategyConfig(CamelModel):
+    """Frequency specials picker tuning (mirrors ``BacktestConfig.specials``)."""
+
+    top_n: int = 4
+    mode: str = "markov_steiner"
+    lookback_draws: int = 60
+    offset_draws: int = 30
+
+
+class DdFilterConfig(CamelModel):
+    """Độc Đắc filter tuning (mirrors ``BacktestConfig.ddFilter``)."""
+
+    enabled: bool = True
+    threshold: int = 15_000_000_000
+
+
+class PredictConfig(CamelModel):
+    """Full flat prediction config (mirrors the TS ``BacktestConfig``)."""
+
+    strategy: str | None = None
+    tpd: int = 2
+    cold: ColdStrategyConfig = Field(default_factory=ColdStrategyConfig)
+    steiner: SteinerStrategyConfig = Field(default_factory=SteinerStrategyConfig)
+    inverse: InverseStrategyConfig = Field(default_factory=InverseStrategyConfig)
+    specials: SpecialsStrategyConfig = Field(default_factory=SpecialsStrategyConfig)
+    dd_filter: DdFilterConfig = Field(default_factory=DdFilterConfig)
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class PredictTicket(CamelModel):
+    """A single predicted ticket (mirrors the TS ``PredictionTicket``)."""
+
+    predicted: list[int]
+    predicted_special: int | None = None
+    coverage: int
+
+
+class DrawInfo(CamelModel):
+    """Minimal draw info (mirrors the TS ``Draw`` fields the UI consumes)."""
+
+    date: str
+    id: str
+    result: list[int]
+
+
+class PredictRequest(CamelModel):
+    """Request body for ``POST /api/predict``.
+
+    Mirrors the current TS route handler: ``{product, strategy?, config?}``
+    plus ``target_date``.  When ``target_date`` is omitted the next draw
+    date is computed via :func:`compute_next_draw_date`.
+    """
+
+    product: str = "power_535"
+    strategy: str | None = None
+    config: PredictConfig | None = None
+    target_date: date | None = None
+
+
+class PredictResponse(CamelModel):
+    """Response body for ``POST /api/predict`` (mirrors TS ``PredictionResult``)."""
+
+    product: str
+    product_display: str
+    strategy: str
+    config: PredictConfig
+    previous_draw: DrawInfo | None = None
+    tickets: list[PredictTicket]
+    generated_at: str
+
+
+class DrawPrizeTierModel(BaseModel):
+    """A single prize tier as consumed by the FE ``PrizeTable`` (snake keys)."""
+
+    prize_name: str
+    prize_value: int
+    winners_count: int
+
+
+class DrawRecord(CamelModel):
+    """A single draw (mirrors the TS ``Draw``)."""
+
+    date: str
+    id: str
+    # Power-family draws: plain int list; 3D-style products keep their
+    # raw {prize_name: [codes]} mapping (the Power UI never renders them).
+    result: list[int] | dict[str, list[str]]
+    # TS contract keeps the raw snake_case ``process_time`` field.
+    process_time: str | None = Field(default=None, alias="process_time")
+    prizes: list[DrawPrizeTierModel] | None = None
+
+
+class DrawsResponse(CamelModel):
+    """Response body for ``GET /api/draws`` (mirrors the TS route handler)."""
+
+    product: str
+    display: str
+    total: int
+    draws: list[DrawRecord]
+
+
+class DrawsRequestParams(CamelModel):
+    """Query params for ``GET /api/draws`` (validated in the endpoint)."""
+
+    product: str = "power_535"
+    limit: int = 20
+    prizes: bool = False
+
+
+class BacktestTicketRowModel(CamelModel):
+    """Per-ticket backtest row (mirrors the TS ``BacktestTicketRow``)."""
+
+    date: str
+    draw_id: str
+    predicted: list[int]
+    predicted_special: int | None = None
+    result: list[int]
+    main_match: int
+    special_match: int
+    gain: int
+    is_correct: bool
+    predict_idx: int
+    special_idx: int
+
+
+class YearlyRowModel(CamelModel):
+    """Yearly aggregate row (mirrors the TS ``YearlyRow``)."""
+
+    year: int
+    draws: int
+    predictions: int
+    cost: int
+    gain: int
+    profit: int
+    roi: float
+
+
+class StrategyBacktestResponse(CamelModel):
+    """Response body for ``POST /api/backtest/strategy``.
+
+    Mirrors the TS ``BacktestSummary`` field-for-field (camelCase).
+    """
+
+    total_cost: int
+    total_gain: int
+    net_profit: int
+    roi: float
+    total_draws: int
+    total_predictions: int
+    match_distribution: dict[int, int]
+    special_hits: int
+    best_threshold: int
+    eligible_draws: int
+    best_results: list[BacktestTicketRowModel]
+    yearly_breakdown: list[YearlyRowModel]
+    all_rows: list[BacktestTicketRowModel]
+
+
+class StrategyBacktestRequest(CamelModel):
+    """Request body for ``POST /api/backtest/strategy`` (TS ``BacktestConfig`` flat)."""
+
+    product: str = "power_535"
+    config: PredictConfig | None = None
+
+
+class EvRequest(CamelModel):
+    """Request body for ``POST /api/ev`` (mirrors the TS route handler body)."""
+
+    product: str = "power_535"
+    num_tickets: int = 8
+    jackpot_base: int = 6_000_000_000
+    history_limit: int = 10
+    history_end_id: str | None = None
+    tier_mode: str = "fixed"
+
+
+class TierWinnerExpectationsModel(CamelModel):
+    """Mean winners per tier across the recent draws."""
+
+    jackpot: float
+    nhat: float
+    nhi: float
+    ba: float
+    tu: float
+    nam: float
+    khuyen_khich: float = Field(default=0, alias="khuyen_khich")
+
+
+class DrawRevenueEstimateModel(CamelModel):
+    """Back-calculated revenue estimate for one observed draw."""
+
+    jackpot_value: int
+    jackpot_winners: int
+    has_jackpot_winner: bool
+    carryover: int
+    fresh_contribution: int
+    revenue: int
+    tickets: int
+
+
+class NextDrawProjectionModel(CamelModel):
+    """Projection of the next draw's Jackpot & ticket volume (mirrors TS)."""
+
+    expected_next_jackpot: int
+    expected_revenue: int
+    expected_tickets: int
+    avg_tickets_last_n: int
+    sample_size: int
+    confidence: str
+    avg_jackpot_winners_last_n: float
+    expected_winners: TierWinnerExpectationsModel
+    split_mode: bool
+
+
+class TierEvRowModel(CamelModel):
+    """Per-tier EV row (mirrors the TS ``TierEvRow``)."""
+
+    tier: str
+    display_name: str
+    probability: float
+    expected_payout: int
+    ev: float
+    split_adjusted: bool
+    expected_other_winners: float
+
+
+class EvResponse(CamelModel):
+    """Response body for ``POST /api/ev`` (mirrors the TS route handler output)."""
+
+    product: str
+    display: str
+    ticket_price: int
+    jackpot_base: int
+    history_sample_size: int
+    history_end_id: str | None = None
+    tier_mode: str
+    ev_per_ticket: float
+    total_ev: float
+    num_tickets: int
+    breakdown: list[TierEvRowModel]
+    projection: NextDrawProjectionModel
+
+
 class BacktestResponse(BaseModel):
     """Response body for ``POST /api/backtest``."""
 

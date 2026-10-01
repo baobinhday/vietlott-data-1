@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProduct } from "@/lib/config";
-import { getDefaultBacktestConfig, runStrategyBacktest } from "@/lib/backtest";
+import { fetchBacktest, getDefaultBacktestConfig } from "@/lib/api";
 import type { BacktestConfig, ProductName } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +12,13 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const productName = body.product ?? "power_535";
+  const productName = (body.product ?? "power_535") as ProductName;
   try {
-    const product = getProduct(productName);
-    const config: BacktestConfig = { ...getDefaultBacktestConfig(product), ...(body.config ?? {}) };
-    const summary = runStrategyBacktest(product, config);
+    const config = { ...getDefaultBacktestConfig(productName), ...((body.config ?? {}) as BacktestConfig) };
+    // NOTE: the Python backend merges sub-configs deep-ish over the same
+    // defaults (a superset of the old TS shallow spread), so partial
+    // sub-configs are safe to pass through.
+    const summary = await fetchBacktest(productName, config);
     return NextResponse.json(summary);
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
