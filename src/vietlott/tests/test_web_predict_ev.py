@@ -120,6 +120,18 @@ class TestPredictEndpoint:
 
 
 class TestPredictService:
+    def test_power_645_ten_tickets_diverse(self):
+        """6/45 tickets are pairwise distinct with overlap <= size_output - 2 = 4."""
+        result = predict_tickets("power_645", config={"tpd": 10}, target_date=date(2025, 10, 15))
+        tickets = result["tickets"]
+        assert len(tickets) == 10
+        sets = [set(t["predicted"]) for t in tickets]
+        for i, s_i in enumerate(sets):
+            assert len(s_i) == 6
+            for s_j in sets[i + 1 :]:
+                assert s_i != s_j, "tickets must be pairwise distinct as sets"
+                assert len(s_i & s_j) <= 4, f"overlap {len(s_i & s_j)} > 4 between tickets {i} and later"
+
     def test_power_535_ticket_count_matches_ts(self):
         result = predict_tickets("power_535", target_date=date(2025, 10, 15))
         assert len(result["tickets"]) == 2 * 4  # tpd × specials.topN
