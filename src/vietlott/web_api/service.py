@@ -442,12 +442,18 @@ def _build_prediction_strategy(product: str, product_cfg: Any, df: pd.DataFrame,
         v=steiner_conf["v"],
     )
 
+    top_k_default: int = int(merged["inverse"]["top_k"])
+    # Widen the proposer pool for no-special products (6/45, 6/55): the
+    # tickets are the raw TPD predictions, so a larger pool gives the
+    # pairwise-overlap diversity filter enough distinct candidates.
+    top_k = top_k_default if product_cfg.special_pick_required else max(top_k_default, tpd * 2 + 4)
+
     strategy_label: str = merged["strategy"] or _DEFAULT_STRATEGY_LABEL
     if TRIO_STRATEGY_LABEL.lower() in strategy_label.lower():
         strategy = InverseHybridTrioStrategy(
             df,
             steiner=steiner,
-            top_k=int(merged["inverse"]["top_k"]),
+            top_k=top_k,
             time_predict=tpd,
         )
     else:
@@ -464,7 +470,7 @@ def _build_prediction_strategy(product: str, product_cfg: Any, df: pd.DataFrame,
         strategy = InverseHybridStrategy(
             proposer=proposer,
             steiner=steiner,
-            top_k=int(merged["inverse"]["top_k"]),
+            top_k=top_k,
             coverage=tpd,
             time_predict=tpd,
         )
@@ -487,6 +493,68 @@ def _build_prediction_strategy(product: str, product_cfg: Any, df: pd.DataFrame,
             mode=str(specials_conf["mode"]),
         )
     return strategy
+
+
+def _overlap_diverse_tickets(strategy: Any, ts_target: pd.Timestamp, count: int, size_output: int) -> list[list[int]]:
+    """Select ``size_output``-number tickets with bounded pairwise overlap.
+
+    Greedy filter: a candidate is kept only when it shares at most
+    ``size_output - 2`` numbers with every already-kept ticket (for 6-number
+    products that rejects tickets sharing 5 or more numbers). On failure to
+    fill the count, up to ``max(20, count * 5)`` resample attempts are made;
+    if the pool is still too small the threshold relaxes once to
+    ``size_output - 1``, then strict set-distinctness, and finally any
+    distinct ticket. Always returns exactly ``count`` tickets.
+    """
+    kept: list[list[int]] = []
+    kept_sets: list[set[int]] = []
+    seen: set[frozenset[int]] = set()
+
+    def accepts(cand_set: set[int], max_overlap: int) -> bool:
+        return all(len(cand_set & s) <= max_overlap for s in kept_sets)
+
+    max_resamples: int = max(20, count * 5)
+    for max_overlap in (size_output - 2, size_output - 1):
+        attempts: int = 0
+        while len(kept) < count:
+            if attempts >= max_resamples and kept:
+                break
+            cand: list[int] = [int(n) for n in strategy.predict(ts_target)]
+            cand_set: set[int] = set(cand)
+            attempts += 1
+            if len(cand_set) < size_output or cand in kept or frozenset(cand_set) in seen:
+                if len(kept) < count:
+                    continue
+                break
+            if len(kept) >= count:
+                break
+            if accepts(cand_set, max_overlap):
+                kept.append(cand)
+                kept_sets.append(cand_set)
+                seen.add(frozenset(cand_set))
+        if len(kept) >= count:
+            break
+
+    # Final fallback — accept any strict-distinct (as a set) ticket.
+    fallback_attempts: int = 0
+    while len(kept) < count and fallback_attempts < max_resamples:
+        fallback_attempts += 1
+        cand = [int(n) for n in strategy.predict(ts_target)]
+        cand_set = set(cand)
+        key = frozenset(cand_set)
+        if len(cand_set) < size_output or (key in seen and len(kept) > 0):
+            continue
+        kept.append(cand)
+        kept_sets.append(cand_set)
+        seen.add(key)
+    # Degenerate pool (strategy keeps echoing one ticket): pad with clones so
+    # the ``count`` contract holds.
+    while len(kept) < count:
+        logger.warning(
+            "predict_tickets: diversity pool exhausted for {}-number tickets; padding with a clone", size_output
+        )
+        kept.append(list(kept[-1]))
+    return kept[:count]
 
 
 def predict_tickets(product: str, config: dict | None = None, target_date: date | None = None) -> dict:
@@ -528,8 +596,13 @@ def predict_tickets(product: str, config: dict | None = None, target_date: date 
 
     # Build the strategy chain (spec: web/src/lib/predict.ts).
     strategy = _build_prediction_strategy(product, product_cfg, df, merged)
-    # TPD main predictions.
-    main_tickets: list[list[int]] = [strategy.predict(ts_target) for _ in range(tpd)]
+    # TPD main predictions. For no-special products (6/45, 6/55) the mains
+    # are the tickets themselves, so apply a pairwise-overlap diversity
+    # filter to avoid near-duplicate tickets.
+    if product_cfg.special_pick_required:
+        main_tickets: list[list[int]] = [strategy.predict(ts_target) for _ in range(tpd)]
+    else:
+        main_tickets = _overlap_diverse_tickets(strategy, ts_target, count=tpd, size_output=product_cfg.size_output)
     # Specials — wheel generated for the next draw (empty for no-special
     # products such as Power 6/45).
     specials: list[int | None] = (
