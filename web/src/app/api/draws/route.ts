@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProduct } from "@/lib/config";
-import { loadDraws, loadPrizes } from "@/lib/data";
+import { fetchDraws } from "@/lib/api";
 import type { Draw, ProductName } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -11,22 +10,14 @@ export async function GET(request: Request) {
   const limit = Math.max(1, Math.min(200, Number(searchParams.get("limit") ?? "20")));
   const includePrizes = searchParams.get("prizes") === "1";
   try {
-    const product = getProduct(productName);
-    const draws = loadDraws(product);
-    let responseDraws: Draw[] = draws.slice(0, limit);
-    if (includePrizes) {
-      const records = loadPrizes(product);
-      const prizeById = new Map(records.map((r) => [r.id, r.prizes]));
-      responseDraws = responseDraws.map((d) => {
-        const p = prizeById.get(d.id);
-        return p ? { ...d, prizes: p } : d;
-      });
-    }
+    const data = await fetchDraws(productName, limit, includePrizes);
+    // Normalize: the backend may emit `prizes: null` when missing.
+    const draws: Draw[] = data.draws.map((d) => (d.prizes == null ? { ...d, prizes: undefined } : d));
     return NextResponse.json({
-      product: product.name,
-      display: product.display,
-      total: draws.length,
-      draws: responseDraws,
+      product: productName,
+      display: data.display,
+      total: data.total,
+      draws,
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 400 });
