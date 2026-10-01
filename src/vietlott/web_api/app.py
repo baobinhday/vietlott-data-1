@@ -11,15 +11,25 @@ from loguru import logger
 from vietlott.web_api.schemas import (
     BacktestRequest,
     BacktestResponse,
+    EvRequest,
+    EvResponse,
     GenerateRequest,
     GenerateResponse,
+    PredictRequest,
+    PredictResponse,
+    StrategyBacktestRequest,
+    StrategyBacktestResponse,
 )
 from vietlott.web_api.service import (
+    compute_ev,
     generate_tickets,
     get_all_products,
+    get_draws,
     get_product_info,
     get_strategies_metadata,
+    predict_tickets,
     run_backtest,
+    run_strategy_backtest,
 )
 
 app = FastAPI(title="Vietlott Strategy Builder API", version="0.1.0")
@@ -34,6 +44,8 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8000",
+        "http://localhost:3456",
+        "http://127.0.0.1:3456",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -123,6 +135,96 @@ def backtest(body: BacktestRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
         logger.warning("Backtest failed (data missing): {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/predict")
+def predict(body: PredictRequest) -> dict:
+    """Generate next-draw prediction tickets for a product.
+
+    Mirrors the Phase-1 migration contract: accepts the TS route handler's
+    request shape (``{product, strategy?, config?, target_date?}``), uses
+    data strictly before ``target_date`` (next draw when omitted) and
+    returns a ``PredictionResult``-shaped payload (camelCase keys).
+    """
+    config_dict = body.config.model_dump() if body.config is not None else None
+    if body.strategy:
+        if config_dict is None:
+            config_dict = {}
+        config_dict["strategy"] = body.strategy
+
+    try:
+        result = predict_tickets(body.product, config=config_dict, target_date=body.target_date)
+        return PredictResponse(**result).model_dump(mode="json", by_alias=True)
+    except ValueError as exc:
+        logger.warning("Predict failed: {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        logger.warning("Predict failed (data missing): {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/ev")
+def ev(body: EvRequest) -> dict:
+    """Estimate per-ticket EV from crawl prize data (mirrors TS ``/api/ev``).
+
+    Returns an ``EvResponse``-shaped payload (camelCase keys).
+    """
+    try:
+        result = compute_ev(
+            body.product,
+            num_tickets=body.num_tickets,
+            jackpot_base=body.jackpot_base,
+            history_limit=body.history_limit,
+            history_end_id=body.history_end_id,
+            tier_mode=body.tier_mode,
+        )
+        return EvResponse(**result).model_dump(mode="json", by_alias=True)
+    except ValueError as exc:
+        logger.warning("EV estimation failed: {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        logger.warning("EV estimation failed (data missing): {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/draws")
+def draws(product: str = "power_535", limit: int = 20, prizes: str = "0") -> dict:
+    """Return draw history (newest-first), optionally with prize tiers.
+
+    Mirrors the TS ``/api/draws`` handler shape:
+    ``{product, display, total, draws: [{date, id, result, process_time?, prizes?}]}``.
+    """
+    include_prizes = prizes == "1"
+    try:
+        result = get_draws(product, limit=limit, include_prizes=include_prizes)
+        from vietlott.web_api.schemas import DrawsResponse
+
+        return DrawsResponse(**result).model_dump(mode="json", by_alias=True)
+    except ValueError as exc:
+        logger.warning("Draws fetch failed: {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        logger.warning("Draws fetch failed (data missing): {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/backtest/strategy")
+def backtest_strategy(body: StrategyBacktestRequest) -> dict:
+    """Backtest the flat UI config (Inverse-Hybrid chain).
+
+    Mirrors the TS ``/api/backtest`` handler output shape
+    (``BacktestSummary`` — camelCase keys).
+    """
+    config_dict = body.config.model_dump() if body.config is not None else None
+    try:
+        result = run_strategy_backtest(body.product, config=config_dict)
+        return StrategyBacktestResponse(**result).model_dump(mode="json", by_alias=True)
+    except ValueError as exc:
+        logger.warning("Flat backtest failed: {}", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        logger.warning("Flat backtest failed (data missing): {}", exc)
         raise HTTPException(status_code=400, detail=str(exc))
 
 
