@@ -106,6 +106,22 @@ export function Sidebar({
               <option value="Inverse Hybrid: Trio (Cold + PairFreq + Pattern)">
                 Inverse Hybrid: Trio (Cold + PairFreq + Pattern)
               </option>
+              <option value="Inverse Hybrid: Long Absence → Steiner">
+                Inverse Hybrid: Long Absence → Steiner
+              </option>
+              <option value="Inverse Hybrid: Trio Reversed (Cold + PairFreq + Pattern)">
+                Inverse Hybrid: Trio Reversed (Cold + PairFreq + Pattern)
+              </option>
+              <option value="Random Strategy">Random Strategy</option>
+              <option value="Hot Numbers Strategy">Hot Numbers Strategy</option>
+              <option value="Cold Numbers Strategy">Cold Numbers Strategy</option>
+              <option value="Long Absence Strategy">Long Absence Strategy</option>
+              <option value="Not Repeat Strategy">Not Repeat Strategy</option>
+              <option value="Pattern Strategy">Pattern Strategy</option>
+              <option value="Exponential Decay Strategy">Exponential Decay Strategy</option>
+              <option value="Pair Frequency Strategy">Pair Frequency Strategy</option>
+              <option value="Markov Chain Strategy">Markov Chain Strategy</option>
+              <option value="Steiner Strategy">Steiner Strategy</option>
             </select>
           </div>
           <NumberField
@@ -192,6 +208,15 @@ export function Sidebar({
             max={50}
             hint="Cold Numbers đề xuất top_k số, Steiner chọn numberPredict từ pool. coverage = TPD (hard-coded trong Python)."
           />
+          <label className="field-label">Thứ tự chọn vé</label>
+          <select
+            className="field-input"
+            value={config.inverse.rankOrder}
+            onChange={(e) => updateNested("inverse", "rankOrder", e.target.value as "desc" | "asc")}
+          >
+            <option value="desc">Vé điểm cao nhất trước (default)</option>
+            <option value="asc">Vé điểm thấp nhất trước</option>
+          </select>
         </ConfigSection>
 
         <ConfigSection title="Specials (số đặc biệt)" badge="5/35">

@@ -15,11 +15,13 @@ from machine_learning.strategies import (
     ColdNumbersStrategy,
     InverseHybridStrategy,
     InverseHybridTrioStrategy,
+    LongAbsenceStrategy,
+    RandomModel,
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
 from machine_learning.strategies.pipeline import PipelineStrategy
-from machine_learning.strategies.registry import list_strategies
+from machine_learning.strategies.registry import instantiate, list_strategies
 from vietlott.config.products import get_config, product_config_map
 from vietlott.web_api.data_loader import load_product_dataframe
 
@@ -374,6 +376,23 @@ TRIO_STRATEGY_LABEL: str = "Inverse Hybrid: Trio (Cold + PairFreq + Pattern)"
 
 _DEFAULT_STRATEGY_LABEL: str = "Inverse Hybrid: Cold Numbers → Steiner"
 
+# Exact-label map for standalone (solo) strategies → registry keys.
+# Each solo strategy is built purely from its own registry/constructor
+# defaults (spec: user request) — the UI-level cold/steiner config keys
+# only tune the Inverse-Hybrid chains, never the solo strategies.
+_SOLO_STRATEGY_LABELS: dict[str, str] = {
+    "random strategy": "random",
+    "hot numbers strategy": "hot_numbers",
+    "cold numbers strategy": "cold_numbers",
+    "long absence strategy": "long_absence",
+    "not repeat strategy": "not_repeat",
+    "pattern strategy": "pattern",
+    "exponential decay strategy": "exponential_decay",
+    "pair frequency strategy": "pair_frequency",
+    "markov chain strategy": "markov_chain",
+    "steiner strategy": "steiner",
+}
+
 # Default prediction config (spec: web/src/lib/backtest.ts::defaultBacktestConfig).
 _DEFAULT_PREDICT_CONFIG: dict[str, Any] = {
     "strategy": None,
@@ -387,7 +406,7 @@ _DEFAULT_PREDICT_CONFIG: dict[str, Any] = {
         "k": 3,
         "v": None,
     },
-    "inverse": {"top_k": 15},
+    "inverse": {"top_k": 15, "rank_order": "desc"},
     "specials": {"top_n": 4, "mode": "markov_steiner", "lookback_draws": 60, "offset_draws": 30},
     "dd_filter": {"enabled": True, "threshold": 15_000_000_000},
     "date_from": None,
@@ -447,14 +466,49 @@ def _build_prediction_strategy(product: str, product_cfg: Any, df: pd.DataFrame,
     # tickets are the raw TPD predictions, so a larger pool gives the
     # pairwise-overlap diversity filter enough distinct candidates.
     top_k = top_k_default if product_cfg.special_pick_required else max(top_k_default, tpd * 2 + 4)
+    rank_order = str(merged["inverse"]["rank_order"])
 
     strategy_label: str = merged["strategy"] or _DEFAULT_STRATEGY_LABEL
-    if TRIO_STRATEGY_LABEL.lower() in strategy_label.lower():
+    solo_key = _SOLO_STRATEGY_LABELS.get(strategy_label.lower())
+    if solo_key is not None:
+        strategy = instantiate(
+            solo_key,
+            df,
+            time_predict=tpd,
+            min_val=product_cfg.min_value,
+            max_val=product_cfg.max_value,
+        )
+    elif "random" in strategy_label.lower():
+        strategy = RandomModel(
+            df,
+            time_predict=tpd,
+            min_val=product_cfg.min_value,
+            max_val=product_cfg.max_value,
+        )
+    elif "trio" in strategy_label.lower():
+        trio_rank_order = "asc" if "reversed" in strategy_label.lower() else rank_order
         strategy = InverseHybridTrioStrategy(
             df,
             steiner=steiner,
             top_k=top_k,
             time_predict=tpd,
+            rank_order=trio_rank_order,
+        )
+    elif "long absence" in strategy_label.lower():
+        proposer = LongAbsenceStrategy(
+            df,
+            time_predict=tpd,
+            min_val=product_cfg.min_value,
+            max_val=product_cfg.max_value,
+            top_n=top_k,
+        )
+        strategy = InverseHybridStrategy(
+            proposer=proposer,
+            steiner=steiner,
+            top_k=top_k,
+            coverage=tpd,
+            time_predict=tpd,
+            rank_order=rank_order,
         )
     else:
         cold_conf = merged["cold"]
@@ -473,6 +527,7 @@ def _build_prediction_strategy(product: str, product_cfg: Any, df: pd.DataFrame,
             top_k=top_k,
             coverage=tpd,
             time_predict=tpd,
+            rank_order=rank_order,
         )
 
     from vietlott.config.prizes import get_prize_fn

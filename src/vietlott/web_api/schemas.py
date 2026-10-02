@@ -1,7 +1,7 @@
 """Pydantic v2 models for the Vietlott Strategy Builder Web API."""
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -197,6 +197,7 @@ class InverseStrategyConfig(CamelModel):
     """InverseHybridStrategy tuning (mirrors ``BacktestConfig.inverse``)."""
 
     top_k: int = 15
+    rank_order: Literal["desc", "asc"] = "desc"
 
 
 class SpecialsStrategyConfig(CamelModel):
