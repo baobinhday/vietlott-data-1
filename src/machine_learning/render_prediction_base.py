@@ -163,6 +163,9 @@ class BasePowerPredictionSummaryGenerator:
           * ``Steiner`` (solo or part of the solo-baselines block)
           * 7 ``Hybrid: Steiner + <voter>`` entries
           * 8 ``Inverse Hybrid: <voter> → Steiner`` entries
+          * The ``Inverse Hybrid: Trio`` ensemble plus its mirrored
+            ``Trio Reversed`` entry (``rank_order="asc"``, lowest-scored
+            selection).
 
         Conditionally emits (controlled by class flags):
           * The 9 solo baseline voters (Random, LongAbsence, Pattern,
@@ -419,6 +422,16 @@ class BasePowerPredictionSummaryGenerator:
                         steiner=steiner_strategy,
                         top_k=15,
                         time_predict=6,
+                    ),
+                ),
+                (
+                    "Inverse Hybrid: Trio Reversed (Cold + PairFreq + Pattern)",
+                    InverseHybridTrioStrategy(
+                        df_pd,
+                        steiner=steiner_strategy,
+                        top_k=15,
+                        time_predict=6,
+                        rank_order="asc",
                     ),
                 ),
             ]

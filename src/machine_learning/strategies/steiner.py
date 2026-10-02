@@ -542,6 +542,7 @@ class SteinerStrategy(PredictModel):
         pool: List[int],
         coverage: int = 3,
         number_predict: Optional[int] = None,
+        rank_order: str = "desc",
     ) -> List[int]:
         """Pick ``number_predict`` numbers from ``pool`` using Steiner blocks.
 
@@ -577,11 +578,18 @@ class SteinerStrategy(PredictModel):
             explicit value when the caller has a different ticket size
             than this Steiner instance (e.g. a 5/35 hybrid driving a
             steiner built with the default 6/55 size).
+        rank_order:
+            ``"desc"`` (default) = highest-scoring Steiner blocks first
+            (unchanged); ``"asc"`` = greedily assemble tickets from the
+            LOWEST-scoring blocks — the mirrored/anti-co-occurrence
+            selection (used by Inverse Hybrid Trio Reversed).
 
         Returns
         -------
         Sorted list of ``number_predict`` numbers drawn from ``pool``.
         """
+        if rank_order not in ("desc", "asc"):
+            raise ValueError(f"rank_order must be 'desc' or 'asc', got {rank_order!r}")
         if number_predict is None:
             number_predict = self.number_predict
         sorted_pool = sorted(set(pool))
@@ -606,7 +614,9 @@ class SteinerStrategy(PredictModel):
             # anchor on, so we just pick the highest-frequency pair /
             # singleton from the pool.
             if number_predict <= 2:
-                unit = self._best_disjoint_unit(set(), [], pool_freq, number_predict, sorted_pool)
+                unit = self._best_disjoint_unit(
+                    set(), [], pool_freq, number_predict, sorted_pool, rank_order=rank_order
+                )
                 if not unit:
                     return sorted(sorted_pool)[:number_predict]
                 # Pad to number_predict when the pool has few candidates.
@@ -620,7 +630,10 @@ class SteinerStrategy(PredictModel):
 
             units = self._decompose_into_units(number_predict)
             scored_triples = [(self._score_block(t, pool_freq), idx, t) for idx, t in enumerate(triples)]
-            scored_triples.sort(key=lambda x: (-x[0], x[1]))
+            if rank_order == "asc":
+                scored_triples.sort(key=lambda x: (x[0], x[1]))
+            else:
+                scored_triples.sort(key=lambda x: (-x[0], x[1]))
 
             steiner_tickets: List[Tuple[int, ...]] = []
             seen: set = set()
@@ -630,7 +643,9 @@ class SteinerStrategy(PredictModel):
                 ticket_nums: set = set(t1)
                 success = True
                 for unit_size in units[1:]:
-                    unit_set = self._best_disjoint_unit(ticket_nums, triples, pool_freq, unit_size, sorted_pool)
+                    unit_set = self._best_disjoint_unit(
+                        ticket_nums, triples, pool_freq, unit_size, sorted_pool, rank_order=rank_order
+                    )
                     if not unit_set:
                         success = False
                         break
@@ -685,7 +700,10 @@ class SteinerStrategy(PredictModel):
             return sorted(sorted_pool)[:number_predict]
 
         scored = [(self._score_block(b, pool_freq), idx, b) for idx, b in enumerate(blocks)]
-        scored.sort(key=lambda x: (-x[0], x[1]))
+        if rank_order == "asc":
+            scored.sort(key=lambda x: (x[0], x[1]))
+        else:
+            scored.sort(key=lambda x: (-x[0], x[1]))
 
         blocks_per_ticket = max(1, math.ceil(number_predict / self.k))
         steiner_tickets: List[Tuple[int, ...]] = []
@@ -800,9 +818,10 @@ class SteinerStrategy(PredictModel):
         freq: Dict[Tuple[int, int], int],
         unit_size: int,
         pool: List[int],
+        rank_order: str = "desc",
     ) -> set:
-        """Find the best (highest-scoring) Steiner unit of ``unit_size``
-        that is pair-disjoint from ``used``.
+        """Find the best (highest- or lowest-scoring) Steiner unit of
+        ``unit_size`` that is pair-disjoint from ``used``.
 
         * ``unit_size == 3`` — best disjoint triple from the partial
           Steiner system.  Score = sum of the triple's 3 internal
@@ -816,23 +835,32 @@ class SteinerStrategy(PredictModel):
           ``used`` is empty, falls back to the singleton with the
           highest sum of pair-frequencies with the rest of the pool.
 
+        ``rank_order`` selects the direction: ``"desc"`` keeps the
+        historical highest-scoring pick; ``"asc"`` inverts each pick to
+        the LOWEST-scoring disjoint candidate (anti-co-occurrence
+        selection).
+
         Returns an empty set if no disjoint unit can be found.
         """
+        if rank_order not in ("desc", "asc"):
+            raise ValueError(f"rank_order must be 'desc' or 'asc', got {rank_order!r}")
+        desc = rank_order == "desc"
+
         if unit_size == 3:
             best: Optional[Tuple[int, ...]] = None
-            best_score = -1
+            best_score = -1 if desc else math.inf
             for t in triples:
                 if set(t) & used:
                     continue
                 s = self._score_block(t, freq)
-                if s > best_score:
+                if (desc and s > best_score) or (not desc and s < best_score):
                     best_score = s
                     best = t
             return set(best) if best is not None else set()
 
         if unit_size == 2:
             best_pair: Optional[Tuple[int, int]] = None
-            best_score = -1
+            best_score = -1 if desc else math.inf
             for i, a in enumerate(pool):
                 if a in used:
                     continue
@@ -840,20 +868,21 @@ class SteinerStrategy(PredictModel):
                     if b in used:
                         continue
                     s = freq.get((a, b), 0)
-                    if s > best_score:
+                    if (desc and s > best_score) or (not desc and s < best_score):
                         best_score = s
                         best_pair = (a, b)
             return set(best_pair) if best_pair is not None else set()
 
         if unit_size == 1:
             if not used:
-                # No anchor — pick the singleton with the highest
-                # aggregate pair-freq with the rest of the pool.
+                # No anchor — pick the singleton with the aggregate
+                # pair-freq with the rest of the pool (max for desc,
+                # min for asc).
                 best_n: Optional[int] = None
-                best_score = -1
+                best_score = -1 if desc else math.inf
                 for n in pool:
                     s = sum(freq.get((min(n, m), max(n, m)), 0) for m in pool if m != n)
-                    if s > best_score:
+                    if (desc and s > best_score) or (not desc and s < best_score):
                         best_score = s
                         best_n = n
                 return {best_n} if best_n is not None else set()
@@ -865,7 +894,9 @@ class SteinerStrategy(PredictModel):
                 scores[n] = s
             if not scores:
                 return set()
-            return {max(scores, key=lambda k: scores[k])}
+            if desc:
+                return {max(scores, key=lambda k: scores[k])}
+            return {min(scores, key=lambda k: scores[k])}
 
         return set()
 

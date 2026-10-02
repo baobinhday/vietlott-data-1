@@ -21,6 +21,7 @@ from machine_learning.strategies import (
     HotNumbersStrategy,
     HybridStrategy,
     InverseHybridStrategy,
+    InverseHybridTrioStrategy,
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
@@ -699,6 +700,78 @@ class TestSteinerPredictFromPool:
             pred = model.predict(target)
             assert len(pred) == 5, f"5/35 hybrid: expected 5 numbers, got {len(pred)}: {pred}"
             assert all(1 <= n <= 35 for n in pred)
+
+
+class TestRankOrderAsc:
+    """rank_order="asc" — lowest-scored Steiner selection on the inverse-hybrid chain."""
+
+    def test_asc_honours_lowest_score(self, df):
+        target = df["date"].max() + timedelta(days=1)
+        pool = list(range(1, 16))
+        steiner_desc = SteinerStrategy(df, time_predict=1, lookback_days=365)
+        steiner_asc = SteinerStrategy(df, time_predict=1, lookback_days=365)
+        pred_desc = steiner_desc.predict_from_pool(target, pool, coverage=1)
+        pred_asc = steiner_asc.predict_from_pool(target, pool, coverage=1, rank_order="asc")
+
+        freq = steiner_asc._pool_pair_freq(target, pool)
+
+        def ticket_score(ticket):
+            return sum(freq.get((min(a, b), max(a, b)), 0) for a, b in combinations(sorted(ticket), 2))
+
+        assert len(set(pred_asc)) == 6, f"ASC ticket must have 6 distinct numbers, got {pred_asc}"
+        assert all(n in pool for n in pred_asc), f"ASC ticket {pred_asc} not in pool {pool}"
+        assert pred_asc == sorted(pred_asc)
+        assert ticket_score(pred_asc) <= ticket_score(pred_desc), (
+            f"ASC ticket score {ticket_score(pred_asc)} must be <= DESC score {ticket_score(pred_desc)}"
+        )
+
+    def test_asc_tiebreaks_deterministically(self, df):
+        target = df["date"].max() + timedelta(days=1)
+        pool = list(range(1, 16))
+        steiner_a = SteinerStrategy(df, time_predict=1, lookback_days=365)
+        steiner_b = SteinerStrategy(df, time_predict=1, lookback_days=365)
+        pred_a = steiner_a.predict_from_pool(target, pool, coverage=1, rank_order="asc")
+        pred_b = steiner_b.predict_from_pool(target, pool, coverage=1, rank_order="asc")
+        assert pred_a == pred_b, f"ASC must be deterministic: {pred_a} vs {pred_b}"
+
+    def test_invalid_rank_order_raises_valueerror(self, df):
+        with pytest.raises(ValueError):
+            InverseHybridStrategy(
+                proposer=LongAbsenceStrategy(df, time_predict=1, top_n=15),
+                steiner=SteinerStrategy(df, time_predict=1, lookback_days=180),
+                rank_order="bogus",
+            )
+        with pytest.raises(ValueError):
+            steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+            InverseHybridTrioStrategy(df, steiner=steiner, rank_order="bogus")
+        with pytest.raises(ValueError):
+            steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+            steiner.predict_from_pool(df["date"].max() + timedelta(days=1), list(range(1, 16)), rank_order="bogus")
+
+    def test_trio_rank_order_plumbs_to_sub_strategies(self, df):
+        steiner_asc = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        trio_asc = InverseHybridTrioStrategy(df, steiner=steiner_asc, top_k=15, time_predict=2, rank_order="asc")
+        assert trio_asc.strat_cold.rank_order == "asc"
+        assert trio_asc.strat_pair.rank_order == "asc"
+        assert trio_asc.strat_pattern.rank_order == "asc"
+
+        steiner_desc = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        trio_desc = InverseHybridTrioStrategy(df, steiner=steiner_desc, top_k=15, time_predict=2)
+        assert trio_desc.strat_cold.rank_order == "desc"
+        assert trio_desc.strat_pair.rank_order == "desc"
+        assert trio_desc.strat_pattern.rank_order == "desc"
+
+    def test_trio_backtest_asc_runs(self, df):
+        steiner = SteinerStrategy(df, time_predict=1, lookback_days=180)
+        model = InverseHybridTrioStrategy(df, steiner=steiner, top_k=15, time_predict=2, rank_order="asc")
+        model.backtest()
+        model.evaluate()
+        cost, gain, profit = model.revenue()
+        assert cost > 0
+        assert gain >= 0
+        assert profit == gain - cost
+        assert model.df_backtest_evaluate is not None
+        assert not model.df_backtest_evaluate.empty
 
 
 # ---------------------------------------------------------------------------

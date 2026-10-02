@@ -7,6 +7,7 @@ these tests assert the response shapes the frontend consumes
 
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 
 from vietlott.web_api.app import app
@@ -93,6 +94,100 @@ class TestPredictEndpoint:
         data = resp.json()
         assert data["strategy"] == "Inverse Hybrid: Trio (Cold + PairFreq + Pattern)"
         assert len(data["tickets"]) == 8
+
+    def test_long_absence_strategy(self):
+        """Label-based Long Absence proposer branch returns the same response shape."""
+        resp = client.post(
+            "/api/predict",
+            json={
+                "product": "power_655",
+                "config": {
+                    "strategy": "Inverse Hybrid: Long Absence → Steiner",
+                    "tpd": 2,
+                },
+                "target_date": "2025-10-15",
+            },
+        )
+        assert resp.status_code == 200, f"Body: {resp.text}"
+        data = resp.json()
+        assert data["strategy"] == "Inverse Hybrid: Long Absence → Steiner"
+        assert len(data["tickets"]) == 2
+        assert all(len(t["predicted"]) == 6 for t in data["tickets"])
+        assert all(1 <= n <= 55 for t in data["tickets"] for n in t["predicted"])
+
+    def test_random_strategy(self):
+        """Random Strategy branch returns tpd random tickets via predict_tickets."""
+        resp = client.post(
+            "/api/predict",
+            json={
+                "product": "power_655",
+                "config": {"strategy": "Random Strategy", "tpd": 3},
+                "target_date": "2025-10-15",
+            },
+        )
+        assert resp.status_code == 200, f"Body: {resp.text}"
+        data = resp.json()
+        assert data["strategy"] == "Random Strategy"
+        assert len(data["tickets"]) == 3
+        assert all(len(t["predicted"]) == 6 for t in data["tickets"])
+        assert all(1 <= n <= 55 for t in data["tickets"] for n in t["predicted"])
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            "Random Strategy",
+            "Hot Numbers Strategy",
+            "Cold Numbers Strategy",
+            "Long Absence Strategy",
+            "Not Repeat Strategy",
+            "Pattern Strategy",
+            "Exponential Decay Strategy",
+            "Pair Frequency Strategy",
+            "Markov Chain Strategy",
+            "Steiner Strategy",
+        ],
+    )
+    def test_solo_strategies(self, label):
+        """Every solo strategy label builds from its own defaults and returns tpd tickets."""
+        resp = client.post(
+            "/api/predict",
+            json={
+                "product": "power_655",
+                "config": {"strategy": label, "tpd": 1},
+                "target_date": "2025-10-15",
+            },
+        )
+        assert resp.status_code == 200, f"Body: {resp.text}"
+        data = resp.json()
+        assert data["strategy"] == label
+        assert len(data["tickets"]) == 1
+        assert all(len(t["predicted"]) == 6 for t in data["tickets"])
+        assert all(1 <= n <= 55 for t in data["tickets"] for n in t["predicted"])
+
+    def test_trio_reversed_strategy(self):
+        """rank_order='asc' trio (Trio Reversed) returns the same response shape."""
+        resp = client.post(
+            "/api/predict",
+            json={
+                "product": "power_655",
+                "config": {
+                    "strategy": "Inverse Hybrid: Trio Reversed (Cold + PairFreq + Pattern)",
+                    "tpd": 6,
+                    "inverse": {"rank_order": "asc"},
+                },
+                "target_date": "2025-10-15",
+            },
+        )
+        assert resp.status_code == 200, f"Body: {resp.text}"
+        data = resp.json()
+        assert data["strategy"] == "Inverse Hybrid: Trio Reversed (Cold + PairFreq + Pattern)"
+        assert len(data["tickets"]) == 6
+        for ticket in data["tickets"]:
+            predicted = ticket["predicted"]
+            assert len(predicted) == 6
+            assert len(set(predicted)) == 6
+            assert all(1 <= n <= 55 for n in predicted)
+            assert set(ticket.keys()) == {"predicted", "predictedSpecial", "coverage"}
 
     def test_unknown_product_400(self):
         resp = client.post("/api/predict", json={"product": "unknown_product"})
