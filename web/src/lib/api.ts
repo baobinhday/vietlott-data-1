@@ -77,7 +77,7 @@ export function getDefaultBacktestConfig(name: ProductName): BacktestConfig {
       k: 3,
       v: DEFAULT_STEINER_V[name] ?? 45,
     },
-    inverse: { topK: 15 },
+    inverse: { topK: 15, rankOrder: "desc" },
     specials: { topN: 4, mode: "markov_steiner", lookbackDraws: 60, offsetDraws: 30 },
     ddFilter: { enabled: true, threshold: 15_000_000_000 },
     dateFrom: null,
