@@ -78,7 +78,7 @@ function ProductShell({ products, product, onProductChange }: ProductShellProps)
 
   const handleStrategyChange = (newStrat: string) => {
     setStrategy(newStrat);
-    if (newStrat === "Inverse Hybrid: Trio (Cold + PairFreq + Pattern)") {
+    if (newStrat.startsWith("Inverse Hybrid: Trio")) {
       setConfig((prev) => ({
         ...prev,
         tpd: 6,

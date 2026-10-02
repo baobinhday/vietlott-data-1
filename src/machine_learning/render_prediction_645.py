@@ -28,7 +28,7 @@ class Power645PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     """Power 6/45 prediction summary generator."""
 
     PRODUCT_NAME: ClassVar[str] = "power_645"
-    TPD: ClassVar[int] = 30
+    TPD: ClassVar[int] = 4
     BEST_THRESHOLD: ClassVar[int] = 4
     OUTPUT_NAME: ClassVar[str] = "readme_645.md"
     PRODUCT_DISPLAY: ClassVar[str] = "Power 6/45"
