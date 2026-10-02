@@ -18,14 +18,30 @@ class InverseHybridTrioStrategy(PredictModel):
     3. Inverse Hybrid: Pattern -> Steiner
 
     Designed to be used with time_predict=6 to buy exactly 6 main tickets (two of each).
+
+    With ``rank_order="asc"`` the ensemble picks each sub-strategy's lowest-Steiner-score
+    tickets instead of the highest (experimental flipped selection; designed for
+    time_predict=6 → 6 lowest-scored tickets). ``InverseHybridTrioStrategy`` with
+    ``rank_order="asc"`` is registered by the render machinery as
+    "Inverse Hybrid: Trio Reversed (Cold + PairFreq + Pattern)".
     """
 
-    def __init__(self, df: pd.DataFrame, steiner: SteinerStrategy, top_k: int = 15, time_predict: int = 6):
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        steiner: SteinerStrategy,
+        top_k: int = 15,
+        time_predict: int = 6,
+        rank_order: str = "desc",
+    ):
+        if rank_order not in ("desc", "asc"):
+            raise ValueError(f"rank_order must be 'desc' or 'asc', got {rank_order!r}")
         # We inherit from PredictModel using steiner's parameters
         super().__init__(steiner.df, time_predict, steiner.min_val, steiner.max_val)
 
         self.steiner = steiner
         self.top_k = top_k
+        self.rank_order = rank_order
         self._call_counter = 0
 
         # Instantiate the three sub-strategies with time_predict=2 (since each generates 2 tickets)
@@ -37,6 +53,7 @@ class InverseHybridTrioStrategy(PredictModel):
             top_k=top_k,
             coverage=2,
             time_predict=2,
+            rank_order=self.rank_order,
         )
 
         self.strat_pair = InverseHybridStrategy(
@@ -47,6 +64,7 @@ class InverseHybridTrioStrategy(PredictModel):
             top_k=top_k,
             coverage=2,
             time_predict=2,
+            rank_order=self.rank_order,
         )
 
         self.strat_pattern = InverseHybridStrategy(
@@ -57,6 +75,7 @@ class InverseHybridTrioStrategy(PredictModel):
             top_k=top_k,
             coverage=2,
             time_predict=2,
+            rank_order=self.rank_order,
         )
 
         self.sub_strategies = [self.strat_cold, self.strat_pair, self.strat_pattern]

@@ -68,6 +68,11 @@ class InverseHybridStrategy(PredictModel):
         generates (default 3).  ``time_predict`` rotates through them.
     time_predict:
         Number of tickets generated per draw during backtest.
+    rank_order:
+        ``"desc"`` (default) = the Steiner picker assembles tickets from
+        the highest-scoring blocks; ``"asc"`` = the picker greedily
+        assembles tickets from the LOWEST-scoring blocks (mirrored /
+        anti-co-occurrence selection).
     """
 
     def __init__(
@@ -77,12 +82,16 @@ class InverseHybridStrategy(PredictModel):
         top_k: int = 15,
         coverage: int = 3,
         time_predict: int = 1,
+        rank_order: str = "desc",
     ):
+        if rank_order not in ("desc", "asc"):
+            raise ValueError(f"rank_order must be 'desc' or 'asc', got {rank_order!r}")
         super().__init__(steiner.df, time_predict, proposer.min_val, proposer.max_val)
         self.proposer = proposer
         self.steiner = steiner
         self.top_k = top_k
         self.coverage = coverage
+        self.rank_order = rank_order
         # Mirror proposer identity for downstream consumers
         self.ticket_price = proposer.ticket_price
         self.prices = dict(proposer.prices)
@@ -112,5 +121,5 @@ class InverseHybridStrategy(PredictModel):
             return self.steiner.predict(target_date)
 
         return self.steiner.predict_from_pool(
-            target_date, pool, coverage=self.coverage, number_predict=self.number_predict
+            target_date, pool, coverage=self.coverage, number_predict=self.number_predict, rank_order=self.rank_order
         )

@@ -217,6 +217,14 @@ _register(
     [
         ParamDef("top_k", "int", 15, 5, 55, "Size of the proposer's candidate number pool"),
         ParamDef("coverage", "int", 3, 1, 10, "Number of disjoint Steiner ticket candidates to generate"),
+        ParamDef(
+            "rank_order",
+            "str",
+            "desc",
+            None,
+            None,
+            '"desc" = highest-scored tickets first (default); "asc" = lowest-scored first (anti-freq flip)',
+        ),
     ],
     InverseHybridStrategy,
 )

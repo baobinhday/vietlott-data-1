@@ -81,6 +81,7 @@ export interface BacktestConfig {
   /** InverseHybridStrategy config */
   inverse: {
     topK: number;
+    rankOrder: "desc" | "asc";
   };
   /** Specials picker config (only used when product has specials) */
   specials: {
