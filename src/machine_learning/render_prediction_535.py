@@ -37,11 +37,13 @@ Leave the flag at ``False`` to keep the original behaviour (one
 ticket per draw on the full history).
 """
 
-from typing import ClassVar
+from typing import ClassVar, List, Tuple
 
 from loguru import logger
 
 from machine_learning.render_prediction_base import BasePowerPredictionSummaryGenerator
+from machine_learning.strategies import AntiShareStrategy, ClusterStrategy
+from machine_learning.strategies.base import PredictModel
 
 
 class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
@@ -63,11 +65,39 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     SPECIALS_OFFSET_DRAWS: ClassVar[int] = 30  # Lùi 30 kỳ quay trước ngày hiện tại để bắt đầu lookback
 
     # Jackpot-split threshold (see :mod:`vietlott.config.prizes`).
-    DD_FILTER_ENABLED: ClassVar[bool] = True
+    DD_FILTER_ENABLED: ClassVar[bool] = False
     DD_THRESHOLD: ClassVar[int] = 16_000_000_000  # 12B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Giải Độc Đắc"
 
     INVERSE_HYBRID_TOP_K: ClassVar[int] = 15
+
+    def _extra_strategy_defs(self, df_pd) -> List[Tuple[str, PredictModel]]:
+        """Append the 5/35-specific ``AntiShare`` and ``Cluster Burst`` strategies.
+
+        Anti-popularity selection fits 5/35: the jackpot is pari-mutuel
+        and split draws share the pool per tier by winner count, so
+        unpopular combinations keep more conditional value.  (Packing is
+        deliberately excluded: its max-spread objective conflicts with
+        the many-small-wins goal for this product.)
+
+        Cluster Burst is the structural opposite of every other
+        (diversifying) strategy: all tickets in a draw share a common
+        core so that when the core hits, many tickets win simultaneously.
+        Expected value is unchanged (linearity); only the shape of the
+        outcome distribution becomes bursty, matching the product's
+        many-simultaneous-small-wins objective.  Special numbers are
+        handled by the standard ``predict_special`` override path.
+        """
+        return [
+            (
+                "AntiShare Strategy",
+                self._make_voter(AntiShareStrategy, df_pd, self.TPD, lookback_days=365),
+            ),
+            (
+                "Cluster Burst",
+                self._make_voter(ClusterStrategy, df_pd, self.TPD, core_size=3),
+            ),
+        ]
 
 
 def main():

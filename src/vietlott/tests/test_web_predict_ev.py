@@ -232,6 +232,48 @@ class TestPredictService:
         assert len(result["tickets"]) == 2 * 4  # tpd × specials.topN
         assert result["previous_draw"]["date"] < "2025-10-15"
 
+    def test_packing_strategy_web(self):
+        """Packing strategy returns tpd tickets with pairwise overlap ≤ 1 for 6/45."""
+        result = predict_tickets("power_645", config={"strategy": "packing", "tpd": 6}, target_date=date(2025, 10, 15))
+        tickets = result["tickets"]
+        assert len(tickets) == 6
+        assert result["strategy"] == "packing"
+        sets = [set(t["predicted"]) for t in tickets]
+        for idx, t in enumerate(tickets):
+            assert t["coverage"] == idx + 1
+            assert len(set(t["predicted"])) == 6 and all(1 <= n <= 45 for n in t["predicted"])
+        for i, s_i in enumerate(sets):
+            for s_j in sets[i + 1 :]:
+                assert s_i != s_j and len(s_i & s_j) <= 1, f"packing overlap must be ≤ 1, got {len(s_i & s_j)}"
+
+    def test_antishare_strategy_web(self):
+        """Anti-share strategy returns tpd distinct valid tickets for 6/45."""
+        result = predict_tickets(
+            "power_645", config={"strategy": "antishare", "tpd": 5}, target_date=date(2025, 10, 15)
+        )
+        tickets = result["tickets"]
+        assert len(tickets) == 5
+        assert result["strategy"] == "antishare"
+        sets = [set(t["predicted"]) for t in tickets]
+        assert len(sets) == len({frozenset(s) for s in sets}), "tickets must be distinct sets"
+        for t in tickets:
+            assert len(t["predicted"]) == 6
+            assert all(1 <= n <= 45 for n in t["predicted"])
+
+    def test_cluster_strategy_web_shared_core(self):
+        """Cluster Burst on 5/35: the 4 mains all share the same 3-number core."""
+        result = predict_tickets("power_535", config={"strategy": "cluster", "tpd": 4}, target_date=date(2025, 10, 15))
+        assert result["strategy"] == "cluster"
+        tickets = result["tickets"]
+        # tpd=4 mains × 4 hot specials = 16 tickets, but only 4 distinct mains.
+        mains = {tuple(t["predicted"]) for t in tickets}
+        assert len(mains) == 4, f"expected 4 distinct mains, got {len(mains)}"
+        for m in mains:
+            assert len(m) == 5
+            assert all(1 <= n <= 35 for n in m)
+        common = set.intersection(*(set(m) for m in mains))
+        assert len(common) == 3, f"all 4 mains must share the 3-number core, got {common}"
+
     def test_unknown_product_raises(self):
         import pytest
 
