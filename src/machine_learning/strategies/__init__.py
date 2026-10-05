@@ -54,7 +54,9 @@ InverseHybridStrategy
     to satisfy the Steiner structural constraint.
 """
 
+from .antishare import AntiShareStrategy
 from .base import PredictModel
+from .cluster import ClusterStrategy
 from .exponential_decay import ExponentialDecayStrategy
 from .frequency import ColdNumbersStrategy, FrequencyStrategy, HotNumbersStrategy
 from .hybrid import HybridStrategy
@@ -63,6 +65,7 @@ from .inverse_hybrid_trio import InverseHybridTrioStrategy
 from .long_absence import LongAbsenceStrategy
 from .markov_chain import MarkovChainStrategy
 from .not_repeat import NotRepeatStrategy
+from .packing import PackingScheduler
 from .pair_frequency import PairFrequencyStrategy
 from .pattern import PatternStrategy
 from .random_strategy import RandomModel
@@ -84,4 +87,7 @@ __all__ = [
     "HybridStrategy",
     "InverseHybridStrategy",
     "InverseHybridTrioStrategy",
+    "AntiShareStrategy",
+    "ClusterStrategy",
+    "PackingScheduler",
 ]

@@ -17,11 +17,13 @@ The output file is renamed to ``<base>_special.md`` and the product
 display gains a ``(Special: …)`` suffix.
 """
 
-from typing import ClassVar
+from typing import ClassVar, List, Tuple
 
 from loguru import logger
 
 from machine_learning.render_prediction_base import BasePowerPredictionSummaryGenerator
+from machine_learning.strategies import AntiShareStrategy, PackingScheduler
+from machine_learning.strategies.base import PredictModel
 
 
 class Power645PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
@@ -40,7 +42,25 @@ class Power645PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     DD_THRESHOLD: ClassVar[int] = 70_000_000_000  # 78.8B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot"
 
-    INVERSE_HYBRID_TOP_K: ClassVar[int] = 25
+    INVERSE_HYBRID_TOP_K: ClassVar[int] = 15
+
+    def _extra_strategy_defs(self, df_pd) -> List[Tuple[str, PredictModel]]:
+        """Append the 6/45-specific ``AntiShare`` and ``Packing`` strategies.
+
+        Both are ``PredictModel`` subclasses that accept the shared
+        constructor signature, so they are instantiated through
+        :meth:`_make_voter` for consistency with the solo baselines.
+        """
+        return [
+            (
+                "AntiShare Strategy",
+                self._make_voter(AntiShareStrategy, df_pd, self.TPD, lookback_days=365),
+            ),
+            (
+                "Packing Scheduler",
+                self._make_voter(PackingScheduler, df_pd, self.TPD),
+            ),
+        ]
 
 
 def main():
