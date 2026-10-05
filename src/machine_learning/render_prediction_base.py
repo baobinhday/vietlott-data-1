@@ -173,6 +173,9 @@ class BasePowerPredictionSummaryGenerator:
             ``INCLUDES_SOLO_BASELINES`` is True.
           * ``Hybrid: Steiner + Pattern`` when ``INCLUDES_PATTERN_HYBRID``
             is True.
+
+        Finally, any extra product-specific strategies returned by
+        :meth:`_extra_strategy_defs` are appended to the resulting list.
         """
         tpd = self.TPD
         steiner_strategy = SteinerStrategy(
@@ -437,7 +440,20 @@ class BasePowerPredictionSummaryGenerator:
             ]
         )
 
+        defs.extend(self._extra_strategy_defs(df_pd))
+
         return defs
+
+    def _extra_strategy_defs(self, df_pd) -> List[Tuple[str, PredictModel]]:
+        """Return product-specific strategies to append to the standard set.
+
+        Hook invoked at the end of :meth:`_build_strategy_defs`.  The base
+        implementation returns an empty list; subclasses may override it to
+        add strategies that only apply to a single product.  Entries are
+        ``(display_name, model)`` pairs and are configured / backtested by
+        :meth:`_build_and_run_strategies` exactly like the built-in ones.
+        """
+        return []
 
     def _build_and_run_strategies(self, df_pd, date_from=None, date_to=None) -> List[StrategyEntry]:
         """Build, configure, backtest, and evaluate all strategies.
