@@ -12,10 +12,13 @@ from loguru import logger
 
 from machine_learning.render_prediction_base import BasePowerPredictionSummaryGenerator
 from machine_learning.strategies import (
+    AntiShareStrategy,
+    ClusterStrategy,
     ColdNumbersStrategy,
     InverseHybridStrategy,
     InverseHybridTrioStrategy,
     LongAbsenceStrategy,
+    PackingScheduler,
     RandomModel,
     SteinerStrategy,
 )
@@ -470,7 +473,29 @@ def _build_prediction_strategy(product: str, product_cfg: Any, df: pd.DataFrame,
 
     strategy_label: str = merged["strategy"] or _DEFAULT_STRATEGY_LABEL
     solo_key = _SOLO_STRATEGY_LABELS.get(strategy_label.lower())
-    if solo_key is not None:
+    if strategy_label.lower() == "antishare":
+        strategy = AntiShareStrategy(
+            df,
+            time_predict=tpd,
+            min_val=product_cfg.min_value,
+            max_val=product_cfg.max_value,
+        )
+    elif strategy_label.lower() == "packing":
+        strategy = PackingScheduler(
+            df,
+            time_predict=tpd,
+            min_val=product_cfg.min_value,
+            max_val=product_cfg.max_value,
+        )
+    elif strategy_label.lower() == "cluster":
+        strategy = ClusterStrategy(
+            df,
+            time_predict=tpd,
+            min_val=product_cfg.min_value,
+            max_val=product_cfg.max_value,
+            core_size=3,
+        )
+    elif solo_key is not None:
         strategy = instantiate(
             solo_key,
             df,
@@ -688,6 +713,14 @@ def predict_tickets(product: str, config: dict | None = None, target_date: date 
         "result": [int(n) for n in last["result"]],
     }
 
+    # Sales-free rollover timing signal (best-effort; never blocks prediction).
+    try:
+        from vietlott.web_api.rollover import get_rollover_state
+
+        rollover: dict | None = get_rollover_state(product)
+    except Exception:  # pragma: no cover - guarded so missing prizes never break predict
+        rollover = None
+
     return {
         "product": product,
         "product_display": _PRODUCT_DISPLAY.get(product, product),
@@ -695,6 +728,7 @@ def predict_tickets(product: str, config: dict | None = None, target_date: date 
         "config": merged,
         "previous_draw": previous_draw,
         "tickets": tickets,
+        "rollover": rollover,
         "generated_at": pendulum.now("UTC").isoformat(),
     }
 

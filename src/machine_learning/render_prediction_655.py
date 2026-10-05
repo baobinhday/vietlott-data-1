@@ -24,11 +24,13 @@ The output file is renamed to ``<base>_special.md`` and the product
 display gains a ``(Special: …)`` suffix.
 """
 
-from typing import ClassVar
+from typing import ClassVar, List, Tuple
 
 from loguru import logger
 
 from machine_learning.render_prediction_base import BasePowerPredictionSummaryGenerator
+from machine_learning.strategies import AntiShareStrategy, PackingScheduler
+from machine_learning.strategies.base import PredictModel
 
 
 class HybridPredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
@@ -44,9 +46,27 @@ class HybridPredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
 
     # "Special" mode: chỉ mua vé khi Jackpot 1 > 200B (toggle True to enable).
     DD_FILTER_ENABLED: ClassVar[bool] = True
-    DD_THRESHOLD: ClassVar[int] = 280_000_000_000  # 200B VND
+    DD_THRESHOLD: ClassVar[int] = 100_000_000_000  # 200B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Jackpot 1"
     INVERSE_HYBRID_TOP_K: ClassVar[int] = 16
+
+    def _extra_strategy_defs(self, df_pd) -> List[Tuple[str, PredictModel]]:
+        """Append the 6/55-specific ``AntiShare`` and ``Packing`` strategies.
+
+        Both are ``PredictModel`` subclasses that accept the shared
+        constructor signature, so they are instantiated through
+        :meth:`_make_voter` for consistency with the solo baselines.
+        """
+        return [
+            (
+                "AntiShare Strategy",
+                self._make_voter(AntiShareStrategy, df_pd, self.TPD, lookback_days=365),
+            ),
+            (
+                "Packing Scheduler",
+                self._make_voter(PackingScheduler, df_pd, self.TPD),
+            ),
+        ]
 
 
 def main():

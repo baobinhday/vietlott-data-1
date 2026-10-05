@@ -8,7 +8,9 @@ Covers:
 - backtest + evaluate pipeline produces expected DataFrame columns
 """
 
+import math
 import random
+from collections import Counter
 from datetime import date, timedelta
 from itertools import combinations
 
@@ -16,6 +18,8 @@ import pandas as pd
 import pytest
 
 from machine_learning.strategies import (
+    AntiShareStrategy,
+    ClusterStrategy,
     ColdNumbersStrategy,
     ExponentialDecayStrategy,
     HotNumbersStrategy,
@@ -25,6 +29,7 @@ from machine_learning.strategies import (
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
+    PackingScheduler,
     PairFrequencyStrategy,
     PatternStrategy,
     RandomModel,
@@ -1137,3 +1142,196 @@ class TestProductConfigSteinerSystem:
         # strategy auto-derives ``(2, 3, max_value)``.
         for name in ("keno", "3d", "3d_pro", "bingo18"):
             assert get_config(name).steiner_system is None, f"{name} should have steiner_system=None"
+
+
+# ---------------------------------------------------------------------------
+# AntiShareStrategy: pari-mutuel anti-popularity (Haigh 1997 / Lien & Yuan 2014)
+# ---------------------------------------------------------------------------
+
+
+class TestAntiShareStrategy:
+    def test_predict_returns_valid_ticket(self, df):
+        model = AntiShareStrategy(df, time_predict=1, min_val=1, max_val=45)
+        model.apply_product_config(_get_config_645())
+        pred = model.predict(date(2025, 10, 15))
+        _assert_valid_prediction(pred, model)
+
+    def test_ten_successive_predictions_distinct(self, df):
+        model = AntiShareStrategy(df, time_predict=10, min_val=1, max_val=45)
+        model.apply_product_config(_get_config_645())
+        preds = [tuple(model.predict(date(2025, 10, 15))) for _ in range(10)]
+        assert len(set(preds)) == 10, "successive predictions on the same date must be distinct sets"
+
+    def test_beats_naive_popular_ticket(self, df):
+        """Popularity score of produced tickets must not exceed chosen naive over-played tickets."""
+        model = AntiShareStrategy(df, time_predict=1, min_val=1, max_val=45)
+        model.apply_product_config(_get_config_645())
+        naive_birthday = [1, 2, 3, 4, 5, 31]  # low numbers + consecutive run
+        naive_balanced = [2, 4, 6, 8, 10, 44]  # uniform parity + spread decades
+        ref = min(model.popularity_score(naive_birthday), model.popularity_score(naive_balanced))
+        d = date(2025, 10, 15)
+        for i in range(5):
+            pred = model.predict(d)
+            assert model.popularity_score(pred) < ref, (
+                f"prediction {i} {pred} score {model.popularity_score(pred)} >= naive {ref}"
+            )
+
+    def test_deterministic_per_call_order(self, df):
+        """Two fresh instances replaying the same call sequence produce identical outputs."""
+        d = date(2025, 10, 15)
+        m1 = AntiShareStrategy(df, time_predict=5, min_val=1, max_val=45).apply_product_config(_get_config_645())
+        m2 = AntiShareStrategy(df, time_predict=5, min_val=1, max_val=45).apply_product_config(_get_config_645())
+        seq1 = [tuple(m1.predict(d)) for _ in range(5)]
+        seq2 = [tuple(m2.predict(d)) for _ in range(5)]
+        assert seq1 == seq2
+
+    def test_rejects_tiny_pool(self, df):
+        model = AntiShareStrategy(df, time_predict=1, min_val=1, max_val=45)
+        with pytest.raises(ValueError, match="candidate pool too small"):
+            model.predict(date(2025, 10, 15), candidate_pool=[1, 2])
+
+
+# ---------------------------------------------------------------------------
+# PackingScheduler: min-max pairwise overlap packing with full coverage
+# ---------------------------------------------------------------------------
+
+
+class TestPackingScheduler:
+    @staticmethod
+    def _model(df, product):
+        cfg = get_config(product)
+        time_predict = math.ceil(cfg.max_value / 6)
+        model = PackingScheduler(df, time_predict=time_predict, min_val=cfg.min_value, max_val=cfg.max_value)
+        return model.apply_product_config(cfg)
+
+    @pytest.mark.parametrize("product,expected_relax", [("power_645", None), ("power_655", None)])
+    def test_full_packing_design(self, df, product, expected_relax):
+        cfg = get_config(product)
+        model = self._model(df, product)
+        n = math.ceil(cfg.max_value / 6)
+        Tickets = [tuple(model.predict(date(2025, 10, 15))) for _ in range(n)]
+        sets = [set(t) for t in Tickets]
+        assert len({frozenset(s) for s in sets}) == n, "tickets must be distinct sets"
+        # Recorded relaxation decides the allowed max overlap.
+        assert model.relaxation_used == expected_relax
+        allowed = model.relaxation_used or 1
+        for i, s_i in enumerate(sets):
+            for s_j in sets[i + 1 :]:
+                assert len(s_i & s_j) <= allowed, f"overlap {len(s_i & s_j)} > {allowed} between tickets"
+        # Full coverage: every number in [1, max_val] appears at least once.
+        covered = set().union(*sets)
+        assert covered == set(range(cfg.min_value, cfg.max_value + 1)), "packing must cover the whole range"
+        # Degree balance within ±1: counts are floor(N*6/v) or ceil(N*6/v).
+        counts = Counter()
+        for t in Tickets:
+            counts.update(t)
+        total = n * 6
+        q, r = divmod(total, cfg.max_value)
+        allowed_degrees = {q, q + 1} if r else {q}
+        assert {counts[i] for i in range(cfg.min_value, cfg.max_value + 1)} <= allowed_degrees
+
+    def test_recomputes_when_product_range_changes(self, df):
+        m = self._model(df, "power_645")
+        d = date(2025, 10, 15)
+        first = m.predict(d)
+        assert all(1 <= n <= 45 for n in first)
+        m2 = self._model(df, "power_655")
+        second = m2.predict(d)
+        assert all(1 <= n <= 55 for n in second) and max(second) > 45
+
+    def test_pool_constrained_rotation(self, df):
+        model = self._model(df, "power_645")
+        pool = list(range(1, 31))
+        tickets = [tuple(model.predict(date(2025, 10, 15), candidate_pool=pool)) for _ in range(5)]
+        for t in tickets:
+            assert set(t) <= set(pool)
+            assert len(t) == 6
+
+
+# ---------------------------------------------------------------------------
+# ClusterStrategy: shared-core "burst" design (5/35 objective)
+# ---------------------------------------------------------------------------
+
+
+class TestClusterStrategy:
+    @staticmethod
+    def _model(df, time_predict: int = 10, core_size: int = 3):
+        cfg = get_config("power_535")
+        model = ClusterStrategy(
+            df,
+            time_predict=time_predict,
+            min_val=cfg.min_value,
+            max_val=cfg.max_value,
+            core_size=core_size,
+        )
+        return model.apply_product_config(cfg)
+
+    def test_predict_returns_valid_5_number_ticket(self, df):
+        """Each ticket is 5 distinct sorted numbers in 1..35."""
+        model = self._model(df, time_predict=1)
+        pred = model.predict(date(2025, 10, 15))
+        _assert_valid_prediction(pred, model)
+
+    def test_ten_successive_predictions_share_exact_core(self, df):
+        """All 10 tickets in a draw share exactly ``core_size`` numbers."""
+        model = self._model(df, time_predict=10, core_size=3)
+        d = date(2025, 10, 15)
+        preds = [model.predict(d) for _ in range(10)]
+        for p in preds:
+            _assert_valid_prediction(p, model)
+        common = set.intersection(*(set(p) for p in preds))
+        assert len(common) == 3, f"intersection of all 10 tickets must be the 3-number core, got {common}"
+
+    def test_tails_pairwise_disjoint_for_default_ten(self, df):
+        """The 10 default tails are disjoint, so tickets differ only in their tails."""
+        model = self._model(df, time_predict=10, core_size=3)
+        d = date(2025, 10, 15)
+        preds = [model.predict(d) for _ in range(10)]
+        common = set.intersection(*(set(p) for p in preds))
+        assert len(common) == 3
+        tails = [tuple(sorted(set(p) - common)) for p in preds]
+        assert len({frozenset(t) for t in tails}) == 10, "tails must be pairwise distinct/disjoint"
+        # Pairwise tails disjoint.
+        for i, t_i in enumerate(tails):
+            for t_j in tails[i + 1 :]:
+                assert not (set(t_i) & set(t_j)), f"tails {t_i} and {t_j} overlap"
+
+    def test_deterministic_across_instances(self, df):
+        """Two fresh instances replaying the same call order are identical."""
+        d = date(2025, 10, 15)
+        m1 = self._model(df, time_predict=10, core_size=3)
+        m2 = self._model(df, time_predict=10, core_size=3)
+        seq1 = [tuple(m1.predict(d)) for _ in range(10)]
+        seq2 = [tuple(m2.predict(d)) for _ in range(10)]
+        assert seq1 == seq2
+
+    def test_different_dates_give_different_cores(self, df):
+        """Cores are date-seeded: over 5 dates at least 2 distinct cores appear."""
+        model = self._model(df, time_predict=1, core_size=3)
+        dates = [date(2025, 10, 13 + i) for i in range(5)]
+        cores: set[frozenset[int]] = set()
+        for d in dates:
+            # Recover the core as the shared part of the first round: predict
+            # twice per date and intersect (tails differ, core is common).
+            a = set(model.predict(d))
+            b = set(model.predict(d))
+            cores.add(frozenset(a & b))
+        assert len(cores) >= 2, f"expected >=2 distinct cores across 5 dates, got {cores}"
+
+    def test_candidate_pool_too_small_raises(self, df):
+        model = self._model(df, time_predict=1)
+        with pytest.raises(ValueError, match="candidate pool too small"):
+            model.predict(date(2025, 10, 15), candidate_pool=[1, 2, 3, 4])
+
+    def test_candidate_pool_constrains_tickets(self, df):
+        """Tickets built from a candidate pool stay inside the pool and share the core."""
+        model = self._model(df, time_predict=5, core_size=3)
+        pool = list(range(1, 16))  # 15 numbers
+        d = date(2025, 10, 15)
+        preds = [model.predict(d, candidate_pool=pool) for _ in range(5)]
+        pool_set = set(pool)
+        for p in preds:
+            assert set(p) <= pool_set
+            assert len(p) == 5
+        common = set.intersection(*(set(p) for p in preds))
+        assert len(common) == 3
