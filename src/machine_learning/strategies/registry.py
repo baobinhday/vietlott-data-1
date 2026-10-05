@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Type
 import pandas as pd
 
 from machine_learning.strategies import (
+    AntiShareStrategy,
+    ClusterStrategy,
     ColdNumbersStrategy,
     ExponentialDecayStrategy,
     FrequencyStrategy,
@@ -20,6 +22,7 @@ from machine_learning.strategies import (
     LongAbsenceStrategy,
     MarkovChainStrategy,
     NotRepeatStrategy,
+    PackingScheduler,
     PairFrequencyStrategy,
     PatternStrategy,
     RandomModel,
@@ -227,6 +230,39 @@ _register(
         ),
     ],
     InverseHybridStrategy,
+)
+
+_register(
+    "antishare",
+    "Anti-Share (Anti-Popularity)",
+    "pari-mutuel anti-popularity (Haigh 1997 / Lien & Yuan 2014): samples random tickets, scores them by a popularity "
+    "proxy (birthday bias <= 31, consecutive runs, balanced decade spread, arithmetic patterns, single parity) and "
+    "returns the least-popular ticket to reduce jackpot sharing.",
+    [ParamDef("lookback_days", "int", 365, 7, 1825, "Lookback contract parameter (unused by scoring)")],
+    AntiShareStrategy,
+)
+
+_register(
+    "packing",
+    "Packing Scheduler",
+    "min-max overlap ≤1 packing design with full number coverage (2-(v,6,1) packing): rotates through precomputed "
+    "tickets so consecutive calls cover every number with balanced degrees.",
+    [],
+    PackingScheduler,
+)
+
+_register(
+    "cluster",
+    "Cluster Burst",
+    "Shared-core burst design maximizing simultaneous small wins per draw (5/35 objective): every ticket in a draw "
+    "shares a common uniformly-random core, and remaining slots are filled from disjoint tails so that when the core "
+    "hits, many tickets win at once. Expected value is unchanged vs diversified tickets (linearity); only the "
+    "distribution shape (bursty simultaneous wins) differs.",
+    [
+        ParamDef("core_size", "int", 3, 1, 4, "Number of shared core numbers contained in every ticket"),
+        ParamDef("lookback_days", "int", 365, 7, 1825, "Lookback contract parameter (unused; core is uniform-random)"),
+    ],
+    ClusterStrategy,
 )
 
 
