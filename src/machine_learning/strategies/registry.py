@@ -25,7 +25,9 @@ from machine_learning.strategies import (
     PackingScheduler,
     PairFrequencyStrategy,
     PatternStrategy,
+    QuasiRandomStrategy,
     RandomModel,
+    SlotSamplerStrategy,
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
@@ -263,6 +265,27 @@ _register(
         ParamDef("lookback_days", "int", 365, 7, 1825, "Lookback contract parameter (unused; core is uniform-random)"),
     ],
     ClusterStrategy,
+)
+
+_register(
+    "slotsampler",
+    "Slot Sampler",
+    "Positional (slot-wise) empirical sampler: estimates the marginal distribution of each sorted slot 1..k from "
+    "history and samples each slot independently, producing tickets whose shape matches the historical slot marginals. "
+    "Expected value is identical to uniform random tickets by construction (same draw law, different factorisation); "
+    "the novelty is distribution-matched ticket shapes, not any edge.",
+    [ParamDef("lookback_days", "int", 365, 7, 1825, "Lookback contract parameter (unused; histograms use the frame)")],
+    SlotSamplerStrategy,
+)
+
+_register(
+    "quasirandom",
+    "Quasi-Random Lattice",
+    "Deterministic low-discrepancy (rank-1 lattice) batch generator: walks a fixed irrational lattice so successive "
+    "tickets are space-filling rather than pseudorandom. Expected value is the same as uniform random tickets; the "
+    "lattice only improves batch uniformity, it confers no edge.",
+    [ParamDef("lookback_days", "int", 365, 7, 1825, "Lookback contract parameter (unused; lattice is history-free)")],
+    QuasiRandomStrategy,
 )
 
 
