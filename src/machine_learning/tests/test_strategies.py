@@ -32,7 +32,9 @@ from machine_learning.strategies import (
     PackingScheduler,
     PairFrequencyStrategy,
     PatternStrategy,
+    QuasiRandomStrategy,
     RandomModel,
+    SlotSamplerStrategy,
     SteinerStrategy,
 )
 from machine_learning.strategies.base import PredictModel
@@ -1335,3 +1337,118 @@ class TestClusterStrategy:
             assert len(p) == 5
         common = set.intersection(*(set(p) for p in preds))
         assert len(common) == 3
+
+
+# ---------------------------------------------------------------------------
+# SlotSamplerStrategy: positional empirical slot-marginal sampler
+# ---------------------------------------------------------------------------
+
+
+def _slot_model(df, product: str, tpd: int = 1) -> SlotSamplerStrategy:
+    cfg = get_config(product)
+    model = SlotSamplerStrategy(df, time_predict=tpd, min_val=cfg.min_value, max_val=cfg.max_value)
+    return model.apply_product_config(cfg)
+
+
+class TestSlotSamplerStrategy:
+    @pytest.mark.parametrize("product", ["power_535", "power_645"])
+    def test_predict_valid_both_products(self, df, product):
+        """Product-agnostic: 5 numbers for 5/35, 6 numbers for 6/45."""
+        model = _slot_model(df, product)
+        _assert_valid_prediction(model.predict(date(2025, 10, 15)), model)
+
+    def test_successive_calls_differ(self, df):
+        model = _slot_model(df, "power_645", tpd=10)
+        preds = [tuple(model.predict(date(2025, 10, 15))) for _ in range(10)]
+        assert len(set(preds)) > 1, "successive date-seeded tickets should differ"
+        for p in preds:
+            assert len(p) == 6
+
+    def test_deterministic_across_instances(self, df):
+        d = date(2025, 10, 15)
+        m1 = _slot_model(df, "power_645", tpd=10)
+        m2 = _slot_model(df, "power_645", tpd=10)
+        seq1 = [tuple(m1.predict(d)) for _ in range(10)]
+        seq2 = [tuple(m2.predict(d)) for _ in range(10)]
+        assert seq1 == seq2
+
+    def test_slot_marginals_skew_low_then_high(self, df):
+        """Structural: the smallest sampled slot is lower than the largest on average."""
+        model = _slot_model(df, "power_535", tpd=200)
+        d = date(2025, 10, 15)
+        preds = [model.predict(d) for _ in range(200)]
+        mean_first = sum(p[0] for p in preds) / len(preds)
+        mean_last = sum(p[-1] for p in preds) / len(preds)
+        assert mean_first < mean_last, f"slot-1 mean {mean_first} should be below slot-k mean {mean_last}"
+
+    def test_candidate_pool_respected_when_feasible(self, df):
+        model = _slot_model(df, "power_645", tpd=5)
+        pool = list(range(10, 30))  # 20 numbers, feasible for k=6
+        preds = [model.predict(date(2025, 10, 15), candidate_pool=pool) for _ in range(5)]
+        pool_set = set(pool)
+        for p in preds:
+            assert set(p) <= pool_set
+            assert len(p) == 6
+
+    def test_candidate_pool_too_small_raises(self, df):
+        model = _slot_model(df, "power_645")
+        with pytest.raises(ValueError, match="candidate pool too small"):
+            model.predict(date(2025, 10, 15), candidate_pool=[1, 2, 3])
+
+
+# ---------------------------------------------------------------------------
+# QuasiRandomStrategy: deterministic rank-1 lattice batch generator
+# ---------------------------------------------------------------------------
+
+
+def _quasi_model(df, product: str, tpd: int = 1) -> QuasiRandomStrategy:
+    cfg = get_config(product)
+    model = QuasiRandomStrategy(df, time_predict=tpd, min_val=cfg.min_value, max_val=cfg.max_value)
+    return model.apply_product_config(cfg)
+
+
+class TestQuasiRandomStrategy:
+    @pytest.mark.parametrize("product", ["power_535", "power_645"])
+    def test_predict_valid_both_products(self, df, product):
+        model = _quasi_model(df, product)
+        _assert_valid_prediction(model.predict(date(2025, 10, 15)), model)
+
+    def test_n_successive_tickets_distinct(self, df):
+        model = _quasi_model(df, "power_645", tpd=20)
+        preds = [tuple(model.predict(date(2025, 10, 15))) for _ in range(20)]
+        assert len(set(preds)) == 20, "successive lattice tickets must be distinct sets"
+
+    def test_deterministic_per_date(self, df):
+        d = date(2025, 10, 15)
+        m1 = _quasi_model(df, "power_645", tpd=10)
+        m2 = _quasi_model(df, "power_645", tpd=10)
+        seq1 = [tuple(m1.predict(d)) for _ in range(10)]
+        seq2 = [tuple(m2.predict(d)) for _ in range(10)]
+        assert seq1 == seq2
+
+    def test_different_dates_differ(self, df):
+        model = _quasi_model(df, "power_645", tpd=1)
+        tickets = {tuple(model.predict(date(2025, 10, 13 + i))) for i in range(5)}
+        assert len(tickets) >= 2, f"date-seeded lattice offsets should differ, got {tickets}"
+
+    def test_full_range_coverage_45_calls(self, df):
+        """Lattice property: 45 tickets of 6 over 1..45 cover the whole range."""
+        model = _quasi_model(df, "power_645", tpd=45)
+        covered: set[int] = set()
+        for _ in range(45):
+            covered.update(model.predict(date(2025, 10, 15)))
+        assert covered == set(range(1, 46)), f"lattice failed to cover: missing {set(range(1, 46)) - covered}"
+
+    def test_candidate_pool_respected_when_feasible(self, df):
+        model = _quasi_model(df, "power_645", tpd=5)
+        pool = list(range(10, 30))
+        pool_set = set(pool)
+        for _ in range(5):
+            p = model.predict(date(2025, 10, 15), candidate_pool=pool)
+            assert set(p) <= pool_set
+            assert len(p) == 6
+
+    def test_candidate_pool_too_small_raises(self, df):
+        model = _quasi_model(df, "power_645")
+        with pytest.raises(ValueError, match="candidate pool too small"):
+            model.predict(date(2025, 10, 15), candidate_pool=[1, 2, 3])
