@@ -52,6 +52,16 @@ InverseHybridStrategy
     triple decomposition with configurable coverage.  Useful when you want
     the proposer's signal to narrow the search space but the final ticket
     to satisfy the Steiner structural constraint.
+SlotSamplerStrategy
+    Positional (slot-wise) empirical sampler: estimates the marginal
+    distribution of each sorted slot 1..k from history and samples each
+    slot independently.  Expected value is identical to uniform tickets by
+    construction; only the distribution of ticket *shapes* differs.
+QuasiRandomStrategy
+    Deterministic low-discrepancy (rank-1 lattice) batch generator: walks
+    a fixed irrational lattice so successive tickets are space-filling.
+    Same expectation as uniform tickets; only batch uniformity differs, not
+    any edge.
 """
 
 from .antishare import AntiShareStrategy
@@ -68,7 +78,9 @@ from .not_repeat import NotRepeatStrategy
 from .packing import PackingScheduler
 from .pair_frequency import PairFrequencyStrategy
 from .pattern import PatternStrategy
+from .quasirandom import QuasiRandomStrategy
 from .random_strategy import RandomModel
+from .slotsampler import SlotSamplerStrategy
 from .steiner import SteinerStrategy
 
 __all__ = [
@@ -90,4 +102,6 @@ __all__ = [
     "AntiShareStrategy",
     "ClusterStrategy",
     "PackingScheduler",
+    "SlotSamplerStrategy",
+    "QuasiRandomStrategy",
 ]

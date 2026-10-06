@@ -35,6 +35,14 @@ Vietlott's jackpot-split rule can kick in, see
 
 Leave the flag at ``False`` to keep the original behaviour (one
 ticket per draw on the full history).
+
+Next-draw numbers
+-----------------
+Generating the summary (or running ``main()``) also emits the predicted
+number sets ("bộ số") for the next upcoming draw: a
+"Bộ số dự đoán cho kỳ quay kế tiếp" section at the top of the generated
+markdown, plus a log line per strategy via
+:meth:`log_next_draw_numbers`.
 """
 
 from typing import ClassVar, List, Tuple
@@ -42,7 +50,12 @@ from typing import ClassVar, List, Tuple
 from loguru import logger
 
 from machine_learning.render_prediction_base import BasePowerPredictionSummaryGenerator
-from machine_learning.strategies import AntiShareStrategy, ClusterStrategy
+from machine_learning.strategies import (
+    AntiShareStrategy,
+    ClusterStrategy,
+    QuasiRandomStrategy,
+    SlotSamplerStrategy,
+)
 from machine_learning.strategies.base import PredictModel
 
 
@@ -65,7 +78,7 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     SPECIALS_OFFSET_DRAWS: ClassVar[int] = 30  # Lùi 30 kỳ quay trước ngày hiện tại để bắt đầu lookback
 
     # Jackpot-split threshold (see :mod:`vietlott.config.prizes`).
-    DD_FILTER_ENABLED: ClassVar[bool] = False
+    DD_FILTER_ENABLED: ClassVar[bool] = True
     DD_THRESHOLD: ClassVar[int] = 16_000_000_000  # 12B VND
     JACKPOT_PRIZE_NAME: ClassVar[str] = "Giải Độc Đắc"
 
@@ -97,6 +110,14 @@ class Power535PredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
                 "Cluster Burst",
                 self._make_voter(ClusterStrategy, df_pd, self.TPD, core_size=3),
             ),
+            (
+                "Slot Sampler",
+                self._make_voter(SlotSamplerStrategy, df_pd, self.TPD),
+            ),
+            (
+                "Quasi-Random Lattice",
+                self._make_voter(QuasiRandomStrategy, df_pd, self.TPD),
+            ),
         ]
 
 
@@ -104,6 +125,7 @@ def main():
     """Main entry point for Power 5/35 prediction summary generation."""
     generator = Power535PredictionSummaryGenerator()
     generator.save_prediction_summary()
+    generator.log_next_draw_numbers()
     logger.info("Power 5/35 prediction summary generation completed successfully!")
 
 
