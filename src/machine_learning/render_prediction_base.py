@@ -28,7 +28,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from types import MethodType
-from typing import ClassVar, Dict, List, Optional, Set, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import polars as pl
@@ -108,6 +108,9 @@ class BasePowerPredictionSummaryGenerator:
             base = self.OUTPUT_NAME.removesuffix(".md")
             self.OUTPUT_NAME = f"{base}{self.DD_FILTER_OUTPUT_SUFFIX}.md"
             self.PRODUCT_DISPLAY = f"{self.PRODUCT_DISPLAY}{self.DD_FILTER_DISPLAY_SUFFIX}"
+        # Result of the last :meth:`predict_next_draw_numbers` call, stashed
+        # by :meth:`_next_draw_section` so ``main()`` entry points can log it.
+        self.next_draw_result: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # Data loading
@@ -882,9 +885,10 @@ class BasePowerPredictionSummaryGenerator:
         match_distribution = "\n".join(match_lines)
 
         mask = (s_correct >= self.BEST_THRESHOLD).to_numpy()
-        df_best = df_eval.loc[
-            mask, ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]
-        ].copy()
+        best_cols = ["date", "result", "predicted", "predicted_special", "special_match", "correct_num"]
+        if "draw_id" in df_eval.columns:
+            best_cols.insert(1, "draw_id")
+        df_best = df_eval.loc[mask, best_cols].copy()
 
         # Calculate prize gain for each winning prediction
         product = model.product_name or ""
@@ -967,6 +971,181 @@ class BasePowerPredictionSummaryGenerator:
 """
 
     # ------------------------------------------------------------------
+    # Next-draw prediction ("bộ số kỳ kế tiếp")
+    # ------------------------------------------------------------------
+
+    def _next_draw_date(self, df_pd: pd.DataFrame) -> Optional[pd.Timestamp]:
+        """Estimate the next draw date strictly after the latest historical draw.
+
+        The draw-weekday cadence is inferred from the most recent 30 draws,
+        so schedule changes are picked up automatically.  Falls back to
+        ``latest + config.interval`` when the recent window is too small to
+        infer a cadence (e.g. tiny synthetic datasets).
+        """
+        dates = pd.to_datetime(df_pd["date"]).dropna().sort_values()
+        if dates.empty:
+            return None
+        latest = dates.iloc[-1]
+        recent = dates.iloc[-30:]
+        if len(recent) >= 8:
+            weekday_counts = Counter(recent.dt.weekday.tolist())
+            # A genuine draw weekday appears many times inside a 30-draw
+            # window; one-off schedule glitches appear only once.
+            draw_weekdays = {wd for wd, count in weekday_counts.items() if count >= 2}
+            if draw_weekdays:
+                for offset in range(1, 15):
+                    candidate = latest + pd.Timedelta(days=offset)
+                    if candidate.weekday() in draw_weekdays:
+                        return candidate
+        interval_days = max(1, int(self.config.interval.total_seconds() // 86400))
+        return latest + pd.Timedelta(days=interval_days)
+
+    def predict_next_draw_numbers(self) -> Optional[Dict[str, Any]]:
+        """Generate the predicted number sets ("bộ số") for the next draw.
+
+        Builds every strategy against the full history (no backtest is
+        run — ``predict`` only reads data strictly before the target
+        date), then asks each model for ``TPD`` main-number tickets and,
+        for products that pick a special number (5/35), the special
+        numbers for the next draw date.  Duplicate tickets produced by
+        deterministic strategies are collapsed while preserving order.
+
+        Returns
+        -------
+        dict with ``next_draw_date`` and a per-strategy list of
+        ``{"strategy", "tickets", "specials"}`` entries, or ``None``
+        when no data is available.
+        """
+        df = self._load_lottery_data()
+        if df.is_empty():
+            logger.warning(f"{self.PRODUCT_DISPLAY}: no data available for next-draw prediction.")
+            return None
+
+        df_pd = df.to_pandas()
+        next_date = self._next_draw_date(df_pd)
+        if next_date is None:
+            return None
+
+        apply_specials = self.SPECIALS_TOP_N is not None
+        entries: List[Dict[str, Any]] = []
+        for name, model in self._build_strategy_defs(df_pd):
+            try:
+                model.apply_product_config(self.config)
+                model.prize_fn = self.prize_fn
+                if apply_specials and model.special_pick_required:
+                    self._apply_frequency_specials(
+                        model,
+                        top_n=self.SPECIALS_TOP_N,
+                        lookback_draws=getattr(self, "SPECIALS_LOOKBACK_DRAWS", 60),
+                        offset_draws=getattr(self, "SPECIALS_OFFSET_DRAWS", 0),
+                        mode=getattr(self, "SPECIALS_MODE", "hot"),
+                    )
+                # One ``predict`` call per ticket slot, mirroring the
+                # backtest loop; deterministic strategies collapse to one.
+                tickets = list(dict.fromkeys(tuple(model.predict(next_date)) for _ in range(self.TPD)))
+                entries.append(
+                    {
+                        "strategy": name,
+                        "tickets": [list(t) for t in tickets],
+                        "specials": list(model.predict_special(next_date)) if model.special_pick_required else [],
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"{self.PRODUCT_DISPLAY}: next-draw prediction failed for {name}: {e}")
+
+        return {"next_draw_date": next_date, "strategies": entries}
+
+    def _latest_jackpot_value(self) -> Optional[int]:
+        """Return the jackpot value of the most recent draw, when prize data exists."""
+        file_stem = self.PRODUCT_NAME.replace("_", "")
+        prize_file = Path(__file__).resolve().parents[2] / "data" / f"{file_stem}_prizes.jsonl"
+        if not prize_file.exists():
+            return None
+
+        import json
+
+        latest: Optional[int] = None
+        with prize_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for p in rec.get("prizes", []):
+                    if p.get("prize_name") == self.JACKPOT_PRIZE_NAME:
+                        raw = str(p.get("prize_value", "0")).replace(".", "")
+                        try:
+                            latest = int(raw) if raw else 0
+                        except ValueError:
+                            latest = 0
+                        break
+        return latest
+
+    def _jackpot_eligibility_line(self) -> Optional[str]:
+        """Explain whether the latest jackpot passes the Special-mode buy rule."""
+        if not self.DD_FILTER_ENABLED:
+            return None
+        jackpot = self._latest_jackpot_value()
+        if jackpot is None:
+            return None
+        if jackpot > self.DD_THRESHOLD:
+            verdict = "vượt ngưỡng → đủ điều kiện mua vé (Special mode)"
+        else:
+            verdict = "chưa vượt ngưỡng → Special mode khuyến nghị chờ"
+        return f"Jackpot kỳ gần nhất: {jackpot:,} VND — {verdict} (ngưỡng {self.DD_THRESHOLD:,} VND)"
+
+    def _next_draw_section(self) -> str:
+        """Markdown section listing the predicted number sets for the next draw."""
+        self.next_draw_result = self.predict_next_draw_numbers()
+        if not self.next_draw_result or not self.next_draw_result["strategies"]:
+            return ""
+
+        next_date = self.next_draw_result["next_draw_date"]
+        lines = [
+            f"## 🎰 Bộ số dự đoán cho kỳ quay kế tiếp ({next_date:%Y-%m-%d})",
+            "",
+            "> Các bộ số được sinh trực tiếp từ toàn bộ lịch sử kỳ quay (không qua backtest).",
+            "",
+        ]
+        jackpot_line = self._jackpot_eligibility_line()
+        if jackpot_line:
+            lines.append(f"> {jackpot_line}")
+            lines.append("")
+        for entry in self.next_draw_result["strategies"]:
+            lines.append(f"### {entry['strategy']}")
+            for ticket in entry["tickets"]:
+                lines.append("- " + " - ".join(f"{n:02d}" for n in ticket))
+            if entry["specials"]:
+                lines.append("- Số đặc biệt: " + ", ".join(f"{s:02d}" for s in entry["specials"]))
+            lines.append("")
+        return "\n".join(lines)
+
+    def log_next_draw_numbers(self) -> Optional[Dict[str, Any]]:
+        """Log the next-draw number sets produced by the last summary run.
+
+        Intended for ``main()`` entry points so running the script prints
+        the "bộ số" for the upcoming draw without opening the markdown.
+        Returns the stashed result dict, or ``None`` when unavailable.
+        """
+        result = getattr(self, "next_draw_result", None)
+        if not result or not result.get("strategies"):
+            logger.warning(f"{self.PRODUCT_DISPLAY}: no next-draw numbers available to log.")
+            return None
+
+        next_date = result["next_draw_date"]
+        logger.info(f"=== {self.PRODUCT_DISPLAY} — Bộ số kỳ kế tiếp ({next_date:%Y-%m-%d}) ===")
+        for entry in result["strategies"]:
+            tickets = " | ".join("-".join(f"{n:02d}" for n in ticket) for ticket in entry["tickets"])
+            message = f"{entry['strategy']}: {tickets}"
+            if entry["specials"]:
+                message += f" (ĐB: {', '.join(str(s) for s in entry['specials'])})"
+            logger.info(message)
+        return result
+
+    # ------------------------------------------------------------------
     # Summary assembly
     # ------------------------------------------------------------------
 
@@ -983,6 +1162,7 @@ class BasePowerPredictionSummaryGenerator:
 
         roi_table = self._roi_comparison_table(strategies)
         reports = [self._generate_strategy_report(model, name, tpd) for name, tpd, model in strategies]
+        next_draw_section = self._next_draw_section()
 
         return f"""# 🔮 Vietlott {self.PRODUCT_DISPLAY} Prediction Summary
 
@@ -990,6 +1170,7 @@ class BasePowerPredictionSummaryGenerator:
 >
 > This document contains machine learning predictions and backtests for Vietlott {self.PRODUCT_DISPLAY} data.
 
+{next_draw_section}
 {roi_table}
 
 ## 🔮 Prediction Models

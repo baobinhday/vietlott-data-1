@@ -22,6 +22,14 @@ to draws where the Jackpot 1 strictly exceeds :attr:`DD_THRESHOLD`
 the full historical dataset – only the ticket purchase is gated.
 The output file is renamed to ``<base>_special.md`` and the product
 display gains a ``(Special: …)`` suffix.
+
+Next-draw numbers
+-----------------
+Generating the summary (or running ``main()``) also emits the predicted
+number sets ("bộ số") for the next upcoming draw: a
+"Bộ số dự đoán cho kỳ quay kế tiếp" section at the top of the generated
+markdown, plus a log line per strategy via
+:meth:`log_next_draw_numbers`.
 """
 
 from typing import ClassVar, List, Tuple
@@ -29,7 +37,7 @@ from typing import ClassVar, List, Tuple
 from loguru import logger
 
 from machine_learning.render_prediction_base import BasePowerPredictionSummaryGenerator
-from machine_learning.strategies import AntiShareStrategy, PackingScheduler
+from machine_learning.strategies import AntiShareStrategy, PackingScheduler, QuasiRandomStrategy, SlotSamplerStrategy
 from machine_learning.strategies.base import PredictModel
 
 
@@ -51,9 +59,9 @@ class HybridPredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
     INVERSE_HYBRID_TOP_K: ClassVar[int] = 16
 
     def _extra_strategy_defs(self, df_pd) -> List[Tuple[str, PredictModel]]:
-        """Append the 6/55-specific ``AntiShare`` and ``Packing`` strategies.
+        """Append the 6/55-specific ``AntiShare``, ``Packing``, ``Slot Sampler`` and ``Quasi-Random`` strategies.
 
-        Both are ``PredictModel`` subclasses that accept the shared
+        All are ``PredictModel`` subclasses that accept the shared
         constructor signature, so they are instantiated through
         :meth:`_make_voter` for consistency with the solo baselines.
         """
@@ -66,6 +74,14 @@ class HybridPredictionSummaryGenerator(BasePowerPredictionSummaryGenerator):
                 "Packing Scheduler",
                 self._make_voter(PackingScheduler, df_pd, self.TPD),
             ),
+            (
+                "Slot Sampler",
+                self._make_voter(SlotSamplerStrategy, df_pd, self.TPD),
+            ),
+            (
+                "Quasi-Random Lattice",
+                self._make_voter(QuasiRandomStrategy, df_pd, self.TPD),
+            ),
         ]
 
 
@@ -74,6 +90,7 @@ def main():
     try:
         generator = HybridPredictionSummaryGenerator()
         generator.save_prediction_summary()
+        generator.log_next_draw_numbers()
         logger.info("Power 6/55 prediction summary generation completed successfully!")
     except Exception as e:
         logger.error(f"Failed to generate Power 6/55 prediction summary: {e}")
