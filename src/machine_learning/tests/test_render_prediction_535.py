@@ -209,6 +209,59 @@ class TestPower535PredictionSummaryGenerator:
         assert f"# 🔮 Vietlott {generator.PRODUCT_DISPLAY} Prediction Summary" in summary
         assert "Prediction Models" in summary
 
+    def test_next_draw_date_uses_draw_cadence(self):
+        """Next-draw date lands on an inferred draw weekday (Sun/Tue/Thu here)."""
+        df_pd = _make_535_df(n=500)
+        generator = Power535PredictionSummaryGenerator()
+
+        next_date = generator._next_draw_date(df_pd)
+        latest = pd.to_datetime(df_pd["date"]).max()
+        assert next_date is not None
+        assert next_date > latest
+        # Synthetic draws: 2023-01-01 (Sunday) + i*2 days → Sun/Tue/Thu cadence.
+        assert next_date.weekday() in {6, 2, 4}
+
+    def test_next_draw_date_falls_back_to_interval(self):
+        """Tiny datasets without an inferable cadence use latest + interval."""
+        df_pd = _make_535_df(n=5)
+        generator = Power535PredictionSummaryGenerator()
+
+        next_date = generator._next_draw_date(df_pd)
+        latest = pd.to_datetime(df_pd["date"]).max()
+        assert next_date == latest + pd.Timedelta(days=2)
+
+    def test_predict_next_draw_numbers(self):
+        """Each strategy returns deduped 5-number tickets + ≤4 specials for the next draw."""
+        df_pd = _make_535_df(n=500)
+        generator = Power535PredictionSummaryGenerator()
+
+        result = generator.predict_next_draw_numbers()
+        assert result is not None
+        assert result["next_draw_date"] > pd.to_datetime(df_pd["date"]).max()
+
+        entries = result["strategies"]
+        assert len(entries) > 0
+        for entry in entries:
+            assert entry["tickets"], f"{entry['strategy']} produced no tickets"
+            assert len(entry["tickets"]) <= generator.TPD
+            for ticket in entry["tickets"]:
+                assert len(ticket) == 5
+                assert len(set(ticket)) == 5
+                assert all(1 <= n <= 35 for n in ticket)
+            assert len(entry["specials"]) <= 4
+            assert all(1 <= s <= 12 for s in entry["specials"])
+
+    def test_next_draw_section_in_summary(self):
+        """The generated markdown contains the next-draw number section."""
+        df_pd = _make_535_df(n=8)
+        generator = Power535PredictionSummaryGenerator()
+        generator._load_lottery_data = lambda: pl.from_pandas(df_pd)
+
+        summary = generator.generate_prediction_summary()
+        assert "Bộ số dự đoán cho kỳ quay kế tiếp" in summary
+        assert generator.next_draw_result is not None
+        assert len(generator.next_draw_result["strategies"]) > 0
+
     def test_save_prediction_summary(self, tmp_path):
         df_pd = _make_535_df(n=5)
         generator = Power535PredictionSummaryGenerator()
