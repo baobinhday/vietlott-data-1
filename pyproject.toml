@@ -7,8 +7,8 @@ where = ["src"] # list of folders that contain the packages (["."] by default)
 
 [project]
 name = "vietlott-data"
-version = "0.2.6"
-description = "crawl & store vietlott data"
+version = "0.3.0"
+description = "Open historical Vietlott lottery dataset — Power 6/55, Mega 6/45, Keno, Max 3D and more. Free NDJSON downloads, daily updates, statistics, and Python/Go tools."
 authors = [{ name = "Viet Vu", email = "vietvudanh@gmail.com" }]
 dependencies = [
     "bs4",
@@ -39,8 +39,8 @@ ml = ["numpy", "scikit-learn", "matplotlib", "pandas"]
 [project.scripts]
 vietlott-crawl = "vietlott.cli.crawl:crawl"
 vietlott-missing = "vietlott.cli.missing:detect_missing_data"
-vietlott-render-readme = "src.render_readme:main"
-vietlott-render-docs = "src.render_docs:main"
+vietlott-render-readme = "vietlott.render_readme:main"
+vietlott-render-docs = "vietlott.render_docs:main"
 
 [tool.ruff]
 line-length = 120
